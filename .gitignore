@@ -1,0 +1,11 @@
+.venv/
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+
+# Local outputs
+outputs/figures/*.png
+outputs/tables/*.csv
