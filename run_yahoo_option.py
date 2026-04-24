@@ -21,13 +21,19 @@ def main() -> None:
 
     config = YahooOptionExperimentConfig(
         ticker="SPY",
-        expiration="2026-05-15",
+        expiration=None,
         option_type="call",
-        strike=700.0,
-        rate=0.04,  # more realistic dynamic rate average
+        strike=None,
+        min_days_to_expiration=30,
+        max_strike_distance_pct=0.1,
+        min_open_interest=1,
+        min_implied_volatility=0.05,
+        fallback_volatility=0.20,
+        realized_vol_window=21,
+        rate=0.04,
         history_period="max",
         transaction_cost_bps=5.0,
-        rehedge_frequencies=(1, 2, 3), # tighter discrete hedges
+        rehedge_frequencies=(1, 2, 5),
     )
 
     results, summary, metadata = run_yahoo_option_experiment(config)

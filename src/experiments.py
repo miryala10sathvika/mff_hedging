@@ -41,6 +41,12 @@ class YahooOptionExperimentConfig:
     expiration: str | None = None
     option_type: str = "call"
     strike: float | None = None
+    min_days_to_expiration: int = 21
+    max_strike_distance_pct: float = 0.1
+    min_open_interest: int = 1
+    min_implied_volatility: float = 0.05
+    fallback_volatility: float = 0.20
+    realized_vol_window: int = 21
     rate: float = 0.02
     history_period: str = "max"
     transaction_cost_bps: float = 0.0
@@ -134,6 +140,12 @@ def run_yahoo_option_experiment(
             expiration=config.expiration,
             option_type=config.option_type,
             strike=config.strike,
+            min_days_to_expiration=config.min_days_to_expiration,
+            max_strike_distance_pct=config.max_strike_distance_pct,
+            min_open_interest=config.min_open_interest,
+            min_implied_volatility=config.min_implied_volatility,
+            fallback_volatility=config.fallback_volatility,
+            realized_vol_window=config.realized_vol_window,
             rate=config.rate,
             history_period=config.history_period,
         )

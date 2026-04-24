@@ -5,8 +5,8 @@ from dataclasses import dataclass
 import math
 import pandas as pd
 
-from src.black_scholes import call_price
-from src.greeks import call_delta, call_greeks
+from src.black_scholes import call_price, put_price
+from src.greeks import call_delta, call_greeks, put_delta, put_greeks
 
 
 @dataclass(frozen=True)
@@ -14,7 +14,7 @@ class HedgeConfig:
     rehedge_every: int = 1
     transaction_cost_bps: float = 0.0
     option_position: int = 1
-    stock_position_sign: int = -1
+    stock_position_sign: int = 1
     trading_days_per_year: int = 252
     is_static_hedge: bool = False
     is_no_hedge: bool = False
@@ -23,6 +23,36 @@ class HedgeConfig:
 
 def _transaction_cost(spot: float, shares_traded: float, transaction_cost_bps: float) -> float:
     return abs(shares_traded) * spot * (transaction_cost_bps / 10000.0)
+
+
+def _option_type(row: pd.Series) -> str:
+    option_type = str(row.get("option_type", "call")).lower()
+    if option_type not in {"call", "put"}:
+        raise ValueError("option_type must be 'call' or 'put'")
+    return option_type
+
+
+def _price(row: pd.Series) -> float:
+    args = (row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"], row["dividend_yield"])
+    return call_price(*args) if _option_type(row) == "call" else put_price(*args)
+
+
+def _delta(row: pd.Series) -> float:
+    args = (row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"], row["dividend_yield"])
+    return call_delta(*args) if _option_type(row) == "call" else put_delta(*args)
+
+
+def _greeks(row: pd.Series) -> dict[str, float]:
+    args = (row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"], row["dividend_yield"])
+    return call_greeks(*args) if _option_type(row) == "call" else put_greeks(*args)
+
+
+def _payoff(spot: float, strike: float, option_type: str) -> float:
+    if option_type == "call":
+        return max(spot - strike, 0.0)
+    if option_type == "put":
+        return max(strike - spot, 0.0)
+    raise ValueError("option_type must be 'call' or 'put'")
 
 
 def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFrame:
@@ -48,38 +78,34 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
     
     if "dividend_yield" not in frame.columns:
         frame["dividend_yield"] = 0.0
+    if "option_type" not in frame.columns:
+        frame["option_type"] = "call"
+    frame["option_type"] = frame["option_type"].astype(str).str.lower()
+    invalid_option_types = set(frame["option_type"]) - {"call", "put"}
+    if invalid_option_types:
+        raise ValueError(f"option_type must be 'call' or 'put'; got {sorted(invalid_option_types)}")
 
     if "option_price" not in frame.columns:
-        frame["option_price"] = frame.apply(
-            lambda row: call_price(row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"], row["dividend_yield"]),
-            axis=1,
-        )
+        frame["option_price"] = frame.apply(_price, axis=1)
     if "delta" not in frame.columns:
-        frame["delta"] = frame.apply(
-            lambda row: call_delta(row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"], row["dividend_yield"]),
-            axis=1,
-        )
+        frame["delta"] = frame.apply(_delta, axis=1)
     greek_columns = {"gamma", "theta", "vega", "rho"}
     if not greek_columns.issubset(frame.columns):
-        greek_frame = frame.apply(
-            lambda row: pd.Series(
-                call_greeks(row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"], row["dividend_yield"])
-            ),
-            axis=1,
-        )
+        greek_frame = frame.apply(lambda row: pd.Series(_greeks(row)), axis=1)
         for column in greek_columns | {"delta"}:
             if column not in frame.columns:
                 frame[column] = greek_frame[column]
 
     rows: list[dict] = []
     current_stock_shares = 0.0
-    cash_account = 0.0
+    cash_account = float(config.option_position * frame.loc[0, "option_price"])
     previous_option_price = None
     previous_portfolio_value = None
     previous_delta = None
 
     for i, row in frame.iterrows():
         target_stock_shares = current_stock_shares
+        shares_before_rehedge = current_stock_shares
         did_rehedge = False
         
         # Decide if we rehedge
@@ -93,18 +119,20 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
         elif i == 0 or i % config.rehedge_every == 0:
             should_rehedge = True
 
-        # Process dividend from previous holding (approx continuously collected per day: S * q * dt)
+        # Process dividend from previous holding (continuous-yield approximation).
         if i > 0:
-            dt = frame.loc[i - 1, "tau"] - row["tau"]
+            previous_row = frame.loc[i - 1]
+            dt = previous_row["tau"] - row["tau"]
             if dt > 0:
-                dividend_cash = current_stock_shares * row["spot"] * row["dividend_yield"] * dt
+                dividend_cash = current_stock_shares * previous_row["spot"] * previous_row["dividend_yield"] * dt
                 cash_account += dividend_cash
 
         # Process rate accrual on cash
         if i > 0:
-            dt = frame.loc[i - 1, "tau"] - row["tau"]
+            previous_row = frame.loc[i - 1]
+            dt = previous_row["tau"] - row["tau"]
             if dt > 0:
-                cash_account *= math.exp(row["rate"] * dt) if row["rate"] > 0 else 1.0
+                cash_account *= math.exp(previous_row["rate"] * dt)
 
         if should_rehedge:
             target_stock_shares = config.stock_position_sign * config.option_position * row["delta"]
@@ -124,14 +152,14 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
         
         if config.is_continuous_ideal:
             portfolio_value = option_value
-            # For theoretical continuous replication portfolio, the value of the stock + cash matches exactly option value (if self-financing)
-            # We override the actual portfolio tracking since continuous hedge has exactly 0 hedging error
             cash_account = portfolio_value - stock_value
         else:
-            portfolio_value = option_value + stock_value + cash_account
+            portfolio_value = stock_value + cash_account
+
+        mark_to_market_hedge_error = portfolio_value - option_value
 
         option_pnl = 0.0 if previous_option_price is None else config.option_position * (row["option_price"] - previous_option_price)
-        stock_pnl = 0.0 if previous_portfolio_value is None else current_stock_shares * (row["spot"] - frame.loc[i - 1, "spot"])
+        stock_pnl = 0.0 if previous_portfolio_value is None else shares_before_rehedge * (row["spot"] - frame.loc[i - 1, "spot"])
         total_pnl = 0.0 if previous_portfolio_value is None else portfolio_value - previous_portfolio_value
 
         rows.append(
@@ -141,6 +169,8 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
                 "strike": row["strike"],
                 "tau": row["tau"],
                 "rate": row["rate"],
+                "dividend_yield": row["dividend_yield"],
+                "option_type": row["option_type"],
                 "volatility": row["volatility"],
                 "option_price": row["option_price"],
                 "delta": row["delta"],
@@ -156,6 +186,7 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
                 "stock_value": stock_value,
                 "option_value": option_value,
                 "portfolio_value": portfolio_value,
+                "mark_to_market_hedge_error": mark_to_market_hedge_error,
                 "option_pnl": option_pnl,
                 "stock_pnl": stock_pnl,
                 "total_pnl": total_pnl,
@@ -169,12 +200,15 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
         previous_delta = row["delta"]
 
     result = pd.DataFrame(rows).set_index("date")
-    terminal_payoff = max(float(result["spot"].iloc[-1] - result["strike"].iloc[-1]), 0.0)
-    result["terminal_option_payoff"] = 0.0
-    result.iloc[-1, result.columns.get_loc("terminal_option_payoff")] = terminal_payoff
-    result["hedge_error"] = result["portfolio_value"]
-    result.iloc[-1, result.columns.get_loc("hedge_error")] = (
-        result["stock_value"].iloc[-1] + result["cash_account"].iloc[-1] + terminal_payoff * config.option_position
+    result["terminal_option_payoff"] = result.apply(
+        lambda row: config.option_position * _payoff(float(row["spot"]), float(row["strike"]), str(row["option_type"])),
+        axis=1,
     )
+    result["hedge_error"] = result["mark_to_market_hedge_error"]
+    final_tau = float(result["tau"].iloc[-1])
+    if final_tau <= 1e-12:
+        result.iloc[-1, result.columns.get_loc("hedge_error")] = (
+            result["portfolio_value"].iloc[-1] - result["terminal_option_payoff"].iloc[-1]
+        )
     result["hedge_error_change"] = result["hedge_error"].diff().fillna(0.0)
     return result

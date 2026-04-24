@@ -4,7 +4,7 @@ import math
 
 import pandas as pd
 
-from src.greeks import call_delta, call_rho, call_theta, gamma, vega
+from src.greeks import call_delta, call_rho, call_theta, gamma, put_delta, put_rho, put_theta, vega
 
 
 def add_greek_pnl_attribution(results: pd.DataFrame) -> pd.DataFrame:
@@ -19,6 +19,12 @@ def add_greek_pnl_attribution(results: pd.DataFrame) -> pd.DataFrame:
     
     if "dividend_yield" not in frame.columns:
         frame["dividend_yield"] = 0.0
+    if "option_type" not in frame.columns:
+        frame["option_type"] = "call"
+    frame["option_type"] = frame["option_type"].astype(str).str.lower()
+    invalid_option_types = set(frame["option_type"]) - {"call", "put"}
+    if invalid_option_types:
+        raise ValueError(f"option_type must be 'call' or 'put'; got {sorted(invalid_option_types)}")
 
     delta_terms = []
     gamma_terms = []
@@ -36,11 +42,17 @@ def add_greek_pnl_attribution(results: pd.DataFrame) -> pd.DataFrame:
             continue
 
         prev = frame.iloc[i - 1]
-        delta_value = call_delta(prev["spot"], prev["strike"], prev["tau"], prev["rate"], prev["volatility"], prev["dividend_yield"])
+        greek_args = (prev["spot"], prev["strike"], prev["tau"], prev["rate"], prev["volatility"], prev["dividend_yield"])
+        if prev["option_type"] == "call":
+            delta_value = call_delta(*greek_args)
+            theta_value = call_theta(*greek_args)
+            rho_value = call_rho(*greek_args)
+        else:
+            delta_value = put_delta(*greek_args)
+            theta_value = put_theta(*greek_args)
+            rho_value = put_rho(*greek_args)
         gamma_value = gamma(prev["spot"], prev["strike"], prev["tau"], prev["rate"], prev["volatility"], prev["dividend_yield"])
-        theta_value = call_theta(prev["spot"], prev["strike"], prev["tau"], prev["rate"], prev["volatility"], prev["dividend_yield"])
         vega_value = vega(prev["spot"], prev["strike"], prev["tau"], prev["rate"], prev["volatility"], prev["dividend_yield"])
-        rho_value = call_rho(prev["spot"], prev["strike"], prev["tau"], prev["rate"], prev["volatility"], prev["dividend_yield"])
 
         ds = frame.iloc[i]["spot_change"]
         dvol = frame.iloc[i]["vol_change"]
