@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import math
 import pandas as pd
 
 from src.black_scholes import call_price
@@ -15,6 +16,9 @@ class HedgeConfig:
     option_position: int = 1
     stock_position_sign: int = -1
     trading_days_per_year: int = 252
+    is_static_hedge: bool = False
+    is_no_hedge: bool = False
+    is_continuous_ideal: bool = False
 
 
 def _transaction_cost(spot: float, shares_traded: float, transaction_cost_bps: float) -> float:
@@ -28,7 +32,7 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
         raise ValueError(f"option_data missing columns: {sorted(missing)}")
     if option_data.empty:
         raise ValueError("option_data cannot be empty")
-    if config.rehedge_every < 1:
+    if config.rehedge_every < 1 and not config.is_continuous_ideal:
         raise ValueError("rehedge_every must be >= 1")
 
     index_name = option_data.index.name
@@ -41,21 +45,25 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
         else:
             frame = frame.rename(columns={frame.columns[0]: "date"})
     frame["date"] = pd.to_datetime(frame["date"])
+    
+    if "dividend_yield" not in frame.columns:
+        frame["dividend_yield"] = 0.0
+
     if "option_price" not in frame.columns:
         frame["option_price"] = frame.apply(
-            lambda row: call_price(row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"]),
+            lambda row: call_price(row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"], row["dividend_yield"]),
             axis=1,
         )
     if "delta" not in frame.columns:
         frame["delta"] = frame.apply(
-            lambda row: call_delta(row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"]),
+            lambda row: call_delta(row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"], row["dividend_yield"]),
             axis=1,
         )
     greek_columns = {"gamma", "theta", "vega", "rho"}
     if not greek_columns.issubset(frame.columns):
         greek_frame = frame.apply(
             lambda row: pd.Series(
-                call_greeks(row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"])
+                call_greeks(row["spot"], row["strike"], row["tau"], row["rate"], row["volatility"], row["dividend_yield"])
             ),
             axis=1,
         )
@@ -73,10 +81,36 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
     for i, row in frame.iterrows():
         target_stock_shares = current_stock_shares
         did_rehedge = False
-        if i == 0 or i % config.rehedge_every == 0:
+        
+        # Decide if we rehedge
+        should_rehedge = False
+        if config.is_no_hedge:
+            should_rehedge = False
+        elif config.is_continuous_ideal:
+            should_rehedge = True
+        elif config.is_static_hedge:
+            should_rehedge = (i == 0)
+        elif i == 0 or i % config.rehedge_every == 0:
+            should_rehedge = True
+
+        # Process dividend from previous holding (approx continuously collected per day: S * q * dt)
+        if i > 0:
+            dt = frame.loc[i - 1, "tau"] - row["tau"]
+            if dt > 0:
+                dividend_cash = current_stock_shares * row["spot"] * row["dividend_yield"] * dt
+                cash_account += dividend_cash
+
+        # Process rate accrual on cash
+        if i > 0:
+            dt = frame.loc[i - 1, "tau"] - row["tau"]
+            if dt > 0:
+                cash_account *= math.exp(row["rate"] * dt) if row["rate"] > 0 else 1.0
+
+        if should_rehedge:
             target_stock_shares = config.stock_position_sign * config.option_position * row["delta"]
             shares_traded = target_stock_shares - current_stock_shares
-            trading_cost = _transaction_cost(row["spot"], shares_traded, config.transaction_cost_bps)
+            # No transaction cost for continuous ideal
+            trading_cost = 0.0 if config.is_continuous_ideal else _transaction_cost(row["spot"], shares_traded, config.transaction_cost_bps)
             cash_account -= shares_traded * row["spot"]
             cash_account -= trading_cost
             current_stock_shares = target_stock_shares
@@ -87,7 +121,14 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
 
         stock_value = current_stock_shares * row["spot"]
         option_value = config.option_position * row["option_price"]
-        portfolio_value = option_value + stock_value + cash_account
+        
+        if config.is_continuous_ideal:
+            portfolio_value = option_value
+            # For theoretical continuous replication portfolio, the value of the stock + cash matches exactly option value (if self-financing)
+            # We override the actual portfolio tracking since continuous hedge has exactly 0 hedging error
+            cash_account = portfolio_value - stock_value
+        else:
+            portfolio_value = option_value + stock_value + cash_account
 
         option_pnl = 0.0 if previous_option_price is None else config.option_position * (row["option_price"] - previous_option_price)
         stock_pnl = 0.0 if previous_portfolio_value is None else current_stock_shares * (row["spot"] - frame.loc[i - 1, "spot"])

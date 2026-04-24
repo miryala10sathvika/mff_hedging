@@ -30,6 +30,9 @@ class ExperimentConfig:
     realized_vol_window: int = 21
     transaction_cost_bps: float = 0.0
     rehedge_frequencies: tuple[int, ...] = (1, 2, 5)
+    include_no_hedge: bool = True
+    include_static_hedge: bool = True
+    include_continuous_ideal: bool = True
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,9 @@ class YahooOptionExperimentConfig:
     history_period: str = "max"
     transaction_cost_bps: float = 0.0
     rehedge_frequencies: tuple[int, ...] = (1, 2, 5)
+    include_no_hedge: bool = True
+    include_static_hedge: bool = True
+    include_continuous_ideal: bool = True
 
 
 def run_experiment(config: ExperimentConfig) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
@@ -72,6 +78,45 @@ def run_experiment(config: ExperimentConfig) -> tuple[dict[str, pd.DataFrame], p
         result = add_greek_pnl_attribution(result)
         paths[label] = result
 
+        summary = summarize_results(result).to_dict()
+        summary["strategy"] = label
+        summaries.append(summary)
+
+    if getattr(config, "include_no_hedge", False):
+        label = "no_hedge"
+        hedge_config = HedgeConfig(
+            is_no_hedge=True,
+            transaction_cost_bps=config.transaction_cost_bps,
+        )
+        result = run_delta_hedge(option_frame, hedge_config)
+        result = add_greek_pnl_attribution(result)
+        paths[label] = result
+        summary = summarize_results(result).to_dict()
+        summary["strategy"] = label
+        summaries.append(summary)
+
+    if getattr(config, "include_static_hedge", False):
+        label = "static_hedge"
+        hedge_config = HedgeConfig(
+            is_static_hedge=True,
+            transaction_cost_bps=config.transaction_cost_bps,
+        )
+        result = run_delta_hedge(option_frame, hedge_config)
+        result = add_greek_pnl_attribution(result)
+        paths[label] = result
+        summary = summarize_results(result).to_dict()
+        summary["strategy"] = label
+        summaries.append(summary)
+
+    if getattr(config, "include_continuous_ideal", False):
+        label = "continuous_ideal"
+        hedge_config = HedgeConfig(
+            is_continuous_ideal=True,
+            transaction_cost_bps=0.0,
+        )
+        result = run_delta_hedge(option_frame, hedge_config)
+        result = add_greek_pnl_attribution(result)
+        paths[label] = result
         summary = summarize_results(result).to_dict()
         summary["strategy"] = label
         summaries.append(summary)
@@ -107,6 +152,54 @@ def run_yahoo_option_experiment(
         result = add_greek_pnl_attribution(result)
         paths[label] = result
 
+        summary = summarize_results(result).to_dict()
+        summary["strategy"] = label
+        summary["contract_symbol"] = metadata["contract_symbol"]
+        summary["expiration"] = metadata["expiration"]
+        summary["selected_strike"] = metadata["selected_strike"]
+        summaries.append(summary)
+
+    if getattr(config, "include_no_hedge", False):
+        label = "no_hedge"
+        hedge_config = HedgeConfig(
+            is_no_hedge=True,
+            transaction_cost_bps=config.transaction_cost_bps,
+        )
+        result = run_delta_hedge(option_frame, hedge_config)
+        result = add_greek_pnl_attribution(result)
+        paths[label] = result
+        summary = summarize_results(result).to_dict()
+        summary["strategy"] = label
+        summary["contract_symbol"] = metadata["contract_symbol"]
+        summary["expiration"] = metadata["expiration"]
+        summary["selected_strike"] = metadata["selected_strike"]
+        summaries.append(summary)
+
+    if getattr(config, "include_static_hedge", False):
+        label = "static_hedge"
+        hedge_config = HedgeConfig(
+            is_static_hedge=True,
+            transaction_cost_bps=config.transaction_cost_bps,
+        )
+        result = run_delta_hedge(option_frame, hedge_config)
+        result = add_greek_pnl_attribution(result)
+        paths[label] = result
+        summary = summarize_results(result).to_dict()
+        summary["strategy"] = label
+        summary["contract_symbol"] = metadata["contract_symbol"]
+        summary["expiration"] = metadata["expiration"]
+        summary["selected_strike"] = metadata["selected_strike"]
+        summaries.append(summary)
+
+    if getattr(config, "include_continuous_ideal", False):
+        label = "continuous_ideal"
+        hedge_config = HedgeConfig(
+            is_continuous_ideal=True,
+            transaction_cost_bps=0.0,
+        )
+        result = run_delta_hedge(option_frame, hedge_config)
+        result = add_greek_pnl_attribution(result)
+        paths[label] = result
         summary = summarize_results(result).to_dict()
         summary["strategy"] = label
         summary["contract_symbol"] = metadata["contract_symbol"]

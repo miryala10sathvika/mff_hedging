@@ -135,7 +135,7 @@ def select_option_contract(
     chain: pd.DataFrame,
     underlying_spot: float,
     strike: float | None = None,
-    max_strike_distance_pct: float = 0.1,
+    max_strike_distance_pct: float = 0.5, # increased default
     min_open_interest: int = 1,
 ) -> pd.Series:
     contracts = chain.copy()
@@ -149,7 +149,11 @@ def select_option_contract(
     contracts["distance_pct"] = contracts["strike_distance"] / max(underlying_spot, 1e-12)
     contracts = contracts[contracts["distance_pct"] <= max_strike_distance_pct]
     if contracts.empty:
-        raise ValueError("No contracts within strike distance threshold")
+        # Fallback to the single closest strike rather than raising an error
+        contracts = chain.copy()
+        if "openInterest" in contracts.columns:
+            contracts = contracts[contracts["openInterest"].fillna(0) >= min_open_interest]
+        contracts["strike_distance"] = (contracts["strike"] - target_strike).abs()
 
     sort_columns = ["strike_distance"]
     ascending = [True]
