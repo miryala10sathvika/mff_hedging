@@ -8,7 +8,13 @@ CACHE_ROOT = PROJECT_ROOT / ".cache"
 os.environ.setdefault("MPLCONFIGDIR", str(CACHE_ROOT / "matplotlib"))
 os.environ.setdefault("XDG_CACHE_HOME", str(CACHE_ROOT))
 
-from src.experiments import ExperimentConfig, run_experiment, save_plots, save_summary_table
+from src.experiments import (
+    ExperimentConfig,
+    get_selected_strategy,
+    run_experiment,
+    save_plots,
+    save_summary_table,
+)
 
 
 def main() -> None:
@@ -27,10 +33,18 @@ def main() -> None:
     )
 
     results, summary = run_experiment(config)
+    selected_strategy = get_selected_strategy(summary)
     figure_paths = save_plots(results)
     table_path = save_summary_table(summary)
 
     print("Baseline run complete.")
+    print(
+        "\nAuto-selected rehedge frequency:"
+        f"\n- strategy: {selected_strategy.name}"
+        f"\n- objective: {float(selected_strategy['selector_objective']):.6f}"
+        f"\n- cvar_loss: {float(selected_strategy['selector_cvar_loss']):.6f}"
+        f"\n- total_transaction_cost: {float(selected_strategy['total_transaction_cost']):.6f}"
+    )
     print("\nSummary:")
     print(summary.round(6).to_string())
     print("\nSaved figures:")

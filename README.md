@@ -80,7 +80,7 @@ MPLCONFIGDIR=.cache/matplotlib env/bin/python -m unittest discover -s tests -v
 Expected result:
 
 ```text
-Ran 9 tests
+Ran 12 tests
 OK
 ```
 
@@ -167,6 +167,12 @@ outputs/figures/yahoo_option/final_hedge_error.png
 outputs/tables/yahoo_option_summary.csv
 ```
 
+Both experiment entry points also auto-select the best periodic rehedging frequency using the summary-table objective:
+
+```text
+selector_objective = max(0, -CVaR) + total_transaction_cost
+```
+
 ## Strategy Definitions
 
 The experiment compares these strategies:
@@ -223,6 +229,8 @@ The summary table includes:
 - final portfolio value
 - number of rehedges
 - mean Greek attribution residual
+- selector CVaR-loss term for periodic strategies
+- selector objective, rank, and selected-frequency flag
 
 ## Using the Modules Directly
 
@@ -243,10 +251,10 @@ put = put_price(spot, strike, tau, rate, volatility)
 greeks = call_greeks(spot, strike, tau, rate, volatility)
 ```
 
-Example: run an experiment from Python.
+Example: run an experiment from Python and inspect the selected rehedging frequency.
 
 ```python
-from src.experiments import ExperimentConfig, run_experiment
+from src.experiments import ExperimentConfig, get_selected_strategy, run_experiment
 
 config = ExperimentConfig(
     ticker="SPY",
@@ -257,7 +265,9 @@ config = ExperimentConfig(
 )
 
 paths, summary = run_experiment(config)
+selected = get_selected_strategy(summary)
 print(summary)
+print(selected.name, selected["selector_objective"])
 ```
 
 ## Common Changes
@@ -299,7 +309,7 @@ rehedge_frequencies=(1, 3, 5, 10)
 - Historical option prices from Yahoo are used when available, but historical implied volatility is not provided as a clean time series.
 - For Yahoo option experiments, current chain IV is used if plausible; otherwise, rolling realized volatility is used as a fallback.
 - The `continuous_ideal` strategy is a theoretical reference, not a tradable strategy.
-- The code includes VaR and CVaR metrics, but it does not yet implement a formal optimizer that automatically chooses the best rebalancing frequency.
+- The automatic selector ranks only periodic rehedging strategies such as `every_1_day` and `every_5_days`; it does not choose among `no_hedge`, `static_hedge`, or `continuous_ideal`.
 - The explicit Bertsimas-Kogan-Lo discrete hedging variance approximation mentioned in the proposal is not yet implemented.
 
 ## Useful Project Documents

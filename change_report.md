@@ -18,7 +18,7 @@ This makes no hedge, static hedge, periodic delta hedging, and the continuous id
 
 ## Files Changed
 
-- `src/hedging_engine.py`
+- `src/hedging_engine.py`   
 - `src/data_loader.py`
 - `src/experiments.py`
 - `src/pnl_attribution.py`
@@ -264,7 +264,7 @@ Outputs were regenerated:
 | Real option price history from Yahoo option contracts | Satisfied |
 | Greek-based P&L attribution | Mostly satisfied |
 | VaR and CVaR summary metrics | Satisfied |
-| Optimization of rebalancing frequency | Partially satisfied |
+| Optimization of rebalancing frequency | Satisfied with an automatic periodic-strategy selector based on downside CVaR plus transaction cost |
 | Bertsimas-Kogan-Lo discrete hedging variance approximation | Not yet implemented |
 
 ## Remaining Work
@@ -272,9 +272,8 @@ Outputs were regenerated:
 The project now satisfies the main engineering and backtesting requirements in the proposal. The remaining academic/reporting gaps are:
 
 1. Add an explicit Bertsimas-Kogan-Lo style discrete hedging variance approximation.
-2. Add an automatic strategy selector that chooses the best rebalancing frequency using a clear objective, such as minimizing CVaR plus transaction cost.
-3. Expand the report notebook or final writeup to explain why live Yahoo option data can be noisy, especially around implied volatility and thinly traded contracts.
-4. Optionally add more robust empirical experiments across multiple expirations and moneyness levels.
+2. Expand the report notebook or final writeup to explain why live Yahoo option data can be noisy, especially around implied volatility and thinly traded contracts.
+3. Optionally add more robust empirical experiments across multiple expirations and moneyness levels.
 
 ## Conclusion
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -19,6 +19,14 @@ from src.pnl_attribution import add_greek_pnl_attribution, summarize_results
 
 
 @dataclass(frozen=True)
+class StrategySelectorConfig:
+    enabled: bool = True
+    cvar_metric: str = "cvar_95_daily"
+    cvar_weight: float = 1.0
+    transaction_cost_weight: float = 1.0
+
+
+@dataclass(frozen=True)
 class ExperimentConfig:
     ticker: str = "SPY"
     start: str = "2020-01-01"
@@ -33,6 +41,7 @@ class ExperimentConfig:
     include_no_hedge: bool = True
     include_static_hedge: bool = True
     include_continuous_ideal: bool = True
+    strategy_selector: StrategySelectorConfig = field(default_factory=StrategySelectorConfig)
 
 
 @dataclass(frozen=True)
@@ -54,6 +63,68 @@ class YahooOptionExperimentConfig:
     include_no_hedge: bool = True
     include_static_hedge: bool = True
     include_continuous_ideal: bool = True
+    strategy_selector: StrategySelectorConfig = field(default_factory=StrategySelectorConfig)
+
+
+def apply_strategy_selector(
+    summary: pd.DataFrame,
+    selector_config: StrategySelectorConfig | None = None,
+) -> pd.DataFrame:
+    if summary.empty:
+        raise ValueError("summary cannot be empty")
+
+    selector = selector_config or StrategySelectorConfig()
+    if not selector.enabled:
+        return summary.copy()
+
+    required_columns = {selector.cvar_metric, "total_transaction_cost", "rehedge_count"}
+    missing_columns = required_columns - set(summary.columns)
+    if missing_columns:
+        raise ValueError(f"summary is missing required selector columns: {sorted(missing_columns)}")
+
+    annotated = summary.copy()
+    annotated["selector_cvar_loss"] = pd.NA
+    annotated["selector_objective"] = pd.NA
+    annotated["selector_rank"] = pd.Series(pd.NA, index=annotated.index, dtype="Int64")
+    annotated["is_auto_selected"] = False
+
+    periodic_mask = annotated.index.to_series().str.startswith("every_")
+    periodic = annotated.loc[periodic_mask].copy()
+    if periodic.empty:
+        raise ValueError("strategy selector requires at least one periodic rehedging strategy")
+
+    periodic["selector_cvar_loss"] = -periodic[selector.cvar_metric].clip(upper=0.0)
+    periodic["selector_objective"] = (
+        selector.cvar_weight * periodic["selector_cvar_loss"]
+        + selector.transaction_cost_weight * periodic["total_transaction_cost"]
+    )
+    periodic = periodic.sort_values(
+        by=["selector_objective", "selector_cvar_loss", "total_transaction_cost", "rehedge_count"],
+        ascending=[True, True, True, True],
+        kind="mergesort",
+    )
+    periodic["selector_rank"] = pd.Series(range(1, len(periodic) + 1), index=periodic.index, dtype="Int64")
+
+    selected_strategy = periodic.index[0]
+    periodic["is_auto_selected"] = periodic.index == selected_strategy
+
+    annotated.loc[periodic.index, "selector_cvar_loss"] = periodic["selector_cvar_loss"]
+    annotated.loc[periodic.index, "selector_objective"] = periodic["selector_objective"]
+    annotated.loc[periodic.index, "selector_rank"] = periodic["selector_rank"]
+    annotated.loc[periodic.index, "is_auto_selected"] = periodic["is_auto_selected"]
+    return annotated
+
+
+def get_selected_strategy(summary: pd.DataFrame) -> pd.Series:
+    if "is_auto_selected" not in summary.columns:
+        raise ValueError("summary does not contain strategy-selector output")
+
+    selected = summary.loc[summary["is_auto_selected"].fillna(False)]
+    if selected.empty:
+        raise ValueError("summary does not mark any auto-selected strategy")
+    if len(selected) > 1:
+        raise ValueError("summary marks more than one auto-selected strategy")
+    return selected.iloc[0]
 
 
 def run_experiment(config: ExperimentConfig) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
@@ -128,6 +199,7 @@ def run_experiment(config: ExperimentConfig) -> tuple[dict[str, pd.DataFrame], p
         summaries.append(summary)
 
     summary_df = pd.DataFrame(summaries).set_index("strategy").sort_index()
+    summary_df = apply_strategy_selector(summary_df, config.strategy_selector)
     return paths, summary_df
 
 
@@ -220,6 +292,7 @@ def run_yahoo_option_experiment(
         summaries.append(summary)
 
     summary_df = pd.DataFrame(summaries).set_index("strategy").sort_index()
+    summary_df = apply_strategy_selector(summary_df, config.strategy_selector)
     return paths, summary_df, metadata
 
 
