@@ -13,6 +13,7 @@ from src.experiments import (
     get_selected_strategy,
     run_yahoo_option_experiment,
     save_plots,
+    save_summary_plots,
     save_summary_table,
 )
 
@@ -22,18 +23,29 @@ def main() -> None:
 
     config = YahooOptionExperimentConfig(
         ticker="SPY",
-        expiration="2026-12-18",
+        expiration=None,
         option_type="call",
-        strike=600.0,
+        strike=None,
+        min_days_to_expiration=30,
+        max_strike_distance_pct=0.1,
+        min_open_interest=1,
+        min_implied_volatility=0.05,
+        min_history_observations=30,
+        max_expirations_to_scan=16,
+        candidates_per_expiration=6,
+        target_abs_delta=0.50,
+        min_abs_delta=0.25,
+        max_abs_delta=0.75,
         rate=0.04,  # more realistic dynamic rate average
         history_period="max",
         transaction_cost_bps=5.0,
-        rehedge_frequencies=(1, 2, 3), # tighter discrete hedges
+        rehedge_frequencies=(1, 2, 5),
     )
 
     results, summary, metadata = run_yahoo_option_experiment(config)
     selected_strategy = get_selected_strategy(summary)
     figure_paths = save_plots(results, output_dir="outputs/figures/yahoo_option")
+    figure_paths.extend(save_summary_plots(summary, output_dir="outputs/figures/yahoo_option"))
     table_path = save_summary_table(summary, output_path="outputs/tables/yahoo_option_summary.csv")
 
     print("Yahoo option run complete.")

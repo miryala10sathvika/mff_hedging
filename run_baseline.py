@@ -13,6 +13,7 @@ from src.experiments import (
     get_selected_strategy,
     run_experiment,
     save_plots,
+    save_summary_plots,
     save_summary_table,
 )
 
@@ -35,6 +36,7 @@ def main() -> None:
     results, summary = run_experiment(config)
     selected_strategy = get_selected_strategy(summary)
     figure_paths = save_plots(results)
+    figure_paths.extend(save_summary_plots(summary))
     table_path = save_summary_table(summary)
 
     print("Baseline run complete.")

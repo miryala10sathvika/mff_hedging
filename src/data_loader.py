@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from src.greeks import call_delta, put_delta
+
 
 TRADING_DAYS_PER_YEAR = 252
 CALENDAR_DAYS_PER_YEAR = 365
@@ -34,6 +36,12 @@ class YahooOptionContractConfig:
     realized_vol_window: int = 21
     rate: float = 0.02
     history_period: str = "max"
+    min_history_observations: int = 20
+    max_expirations_to_scan: int = 12
+    candidates_per_expiration: int = 5
+    target_abs_delta: float = 0.50
+    min_abs_delta: float = 0.25
+    max_abs_delta: float = 0.75
 
 
 def download_price_history(config: MarketDataConfig) -> pd.DataFrame:
@@ -195,6 +203,181 @@ def fetch_current_option_chain(
     return chain.copy(), getattr(option_chain, "underlying", None) or {}, selected_expiration
 
 
+def _eligible_expirations(
+    expirations: tuple[str, ...],
+    min_days_to_expiration: int,
+    max_expirations_to_scan: int,
+) -> list[str]:
+    today = pd.Timestamp.today().normalize()
+    eligible = [
+        expiration
+        for expiration in expirations
+        if (pd.Timestamp(expiration).normalize() - today).days >= min_days_to_expiration
+    ]
+    if not eligible:
+        eligible = list(expirations)
+    return eligible[:max_expirations_to_scan]
+
+
+def _estimated_delta(
+    option_type: str,
+    spot: float,
+    strike: float,
+    tau: float,
+    rate: float,
+    volatility: float,
+) -> float:
+    if option_type == "call":
+        return call_delta(spot, strike, tau, rate, volatility)
+    if option_type == "put":
+        return put_delta(spot, strike, tau, rate, volatility)
+    raise ValueError("option_type must be 'call' or 'put'")
+
+
+def _rank_contract_candidates(
+    chain: pd.DataFrame,
+    underlying_spot: float,
+    selected_expiration: str,
+    option_type: str,
+    strike: float | None,
+    max_strike_distance_pct: float,
+    min_open_interest: int,
+    min_implied_volatility: float,
+    fallback_volatility: float,
+    rate: float,
+    target_abs_delta: float,
+    min_abs_delta: float,
+    max_abs_delta: float,
+) -> pd.DataFrame:
+    contracts = chain.copy()
+    if contracts.empty:
+        return contracts
+
+    target_strike = strike if strike is not None else underlying_spot
+    contracts["strike_distance"] = (contracts["strike"] - target_strike).abs()
+    contracts["distance_pct"] = contracts["strike_distance"] / max(underlying_spot, 1e-12)
+    distance_filtered = contracts[contracts["distance_pct"] <= max_strike_distance_pct].copy()
+    if not distance_filtered.empty:
+        contracts = distance_filtered
+
+    expiration_ts = pd.Timestamp(selected_expiration).normalize()
+    tau = max((expiration_ts - pd.Timestamp.today().normalize()).days / CALENDAR_DAYS_PER_YEAR, 1.0 / CALENDAR_DAYS_PER_YEAR)
+
+    estimated_deltas = []
+    for row in contracts.itertuples():
+        volatility = _first_finite_float([getattr(row, "impliedVolatility", float("nan")), fallback_volatility])
+        volatility = max(volatility, min_implied_volatility, 1e-6)
+        estimated_deltas.append(
+            _estimated_delta(
+                option_type=option_type,
+                spot=underlying_spot,
+                strike=float(row.strike),
+                tau=tau,
+                rate=rate,
+                volatility=volatility,
+            )
+        )
+
+    contracts["estimated_delta"] = estimated_deltas
+    contracts["estimated_abs_delta"] = contracts["estimated_delta"].abs()
+    contracts["delta_in_range"] = contracts["estimated_abs_delta"].between(min_abs_delta, max_abs_delta)
+    if contracts["delta_in_range"].any():
+        contracts = contracts[contracts["delta_in_range"]].copy()
+
+    contracts["delta_penalty"] = (contracts["estimated_abs_delta"] - target_abs_delta).abs()
+    sort_columns = ["delta_penalty", "strike_distance"]
+    ascending = [True, True]
+    if "openInterest" in contracts.columns:
+        sort_columns.append("openInterest")
+        ascending.append(False)
+    return contracts.sort_values(sort_columns, ascending=ascending)
+
+
+def select_option_contract_with_history(
+    ticker_obj: yf.Ticker,
+    ticker: str,
+    expirations: tuple[str, ...],
+    underlying_spot: float,
+    option_type: str = "call",
+    strike: float | None = None,
+    min_days_to_expiration: int = 21,
+    max_strike_distance_pct: float = 0.1,
+    min_open_interest: int = 1,
+    min_implied_volatility: float = 0.05,
+    fallback_volatility: float = 0.20,
+    rate: float = 0.02,
+    history_period: str = "max",
+    min_history_observations: int = 20,
+    max_expirations_to_scan: int = 12,
+    candidates_per_expiration: int = 5,
+    target_abs_delta: float = 0.50,
+    min_abs_delta: float = 0.25,
+    max_abs_delta: float = 0.75,
+) -> tuple[pd.Series, str, pd.DataFrame]:
+    if option_type not in {"call", "put"}:
+        raise ValueError("option_type must be 'call' or 'put'")
+
+    attempts: list[dict[str, Any]] = []
+    fallback: tuple[pd.Series, str, pd.DataFrame, int] | None = None
+    for selected_expiration in _eligible_expirations(
+        expirations,
+        min_days_to_expiration=min_days_to_expiration,
+        max_expirations_to_scan=max_expirations_to_scan,
+    ):
+        option_chain = ticker_obj.option_chain(selected_expiration)
+        chain = option_chain.calls if option_type == "call" else option_chain.puts
+        if chain is None or chain.empty:
+            continue
+
+        candidates = _rank_contract_candidates(
+            chain=chain,
+            underlying_spot=underlying_spot,
+            selected_expiration=selected_expiration,
+            option_type=option_type,
+            strike=strike,
+            max_strike_distance_pct=max_strike_distance_pct,
+            min_open_interest=min_open_interest,
+            min_implied_volatility=min_implied_volatility,
+            fallback_volatility=fallback_volatility,
+            rate=rate,
+            target_abs_delta=target_abs_delta,
+            min_abs_delta=min_abs_delta,
+            max_abs_delta=max_abs_delta,
+        ).head(candidates_per_expiration)
+
+        for _, contract in candidates.iterrows():
+            contract_symbol = str(contract["contractSymbol"])
+            try:
+                option_history = download_option_history(contract_symbol, period=history_period)
+            except Exception as exc:
+                attempts.append(
+                    {
+                        "expiration": selected_expiration,
+                        "contract_symbol": contract_symbol,
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+            history_observations = int(len(option_history))
+            attempts.append(
+                {
+                    "expiration": selected_expiration,
+                    "contract_symbol": contract_symbol,
+                    "history_observations": history_observations,
+                    "estimated_abs_delta": float(contract.get("estimated_abs_delta", float("nan"))),
+                }
+            )
+            if fallback is None or history_observations > fallback[3]:
+                fallback = (contract, selected_expiration, option_history, history_observations)
+            if history_observations >= min_history_observations:
+                return contract, selected_expiration, option_history
+
+    if fallback is not None:
+        return fallback[0], fallback[1], fallback[2]
+    raise ValueError(f"No option contract with usable history found for {ticker}. Attempts: {attempts}")
+
+
 def select_option_contract(
     chain: pd.DataFrame,
     underlying_spot: float,
@@ -205,13 +388,11 @@ def select_option_contract(
 ) -> pd.Series:
     contracts = chain.copy()
     if "openInterest" in contracts.columns:
-        contracts = contracts[contracts["openInterest"].fillna(0) >= min_open_interest]
+        open_interest_contracts = contracts[contracts["openInterest"].fillna(0) >= min_open_interest]
+        if not open_interest_contracts.empty:
+            contracts = open_interest_contracts
     if contracts.empty:
-        raise ValueError("No contracts left after open interest filter")
-    if "impliedVolatility" in contracts.columns and min_implied_volatility > 0:
-        plausible_iv_contracts = contracts[contracts["impliedVolatility"].fillna(0) >= min_implied_volatility]
-        if not plausible_iv_contracts.empty:
-            contracts = plausible_iv_contracts
+        raise ValueError("No contracts available for selection")
     selection_universe = contracts.copy()
 
     target_strike = strike if strike is not None else underlying_spot
@@ -246,25 +427,67 @@ def download_option_history(contract_symbol: str, period: str = "max") -> pd.Dat
 
 def build_yahoo_observed_option_frame(config: YahooOptionContractConfig) -> tuple[pd.DataFrame, dict[str, Any]]:
     ticker_obj = yf.Ticker(config.ticker)
-    chain, underlying, selected_expiration = fetch_current_option_chain(
-        ticker=config.ticker,
-        expiration=config.expiration,
-        option_type=config.option_type,
+    try:
+        expirations = ticker_obj.options
+    except Exception as exc:
+        raise RuntimeError(
+            "Yahoo Finance option lookup failed. This is usually a network or DNS issue in the current environment."
+        ) from exc
+    if not expirations:
+        raise ValueError(f"No option expirations returned by yfinance for {config.ticker}")
+
+    first_expiration = config.expiration or _eligible_expirations(
+        expirations,
         min_days_to_expiration=config.min_days_to_expiration,
+        max_expirations_to_scan=1,
+    )[0]
+    if first_expiration not in expirations:
+        raise ValueError(f"Expiration {first_expiration} not available. Choices: {expirations}")
+
+    first_chain = ticker_obj.option_chain(first_expiration)
+    underlying_spot = _resolve_underlying_spot(
+        ticker_obj,
+        getattr(first_chain, "underlying", None) or {},
+        config.ticker,
     )
 
-    underlying_spot = _resolve_underlying_spot(ticker_obj, underlying, config.ticker)
+    if config.expiration is None:
+        contract, selected_expiration, option_history = select_option_contract_with_history(
+            ticker_obj=ticker_obj,
+            ticker=config.ticker,
+            expirations=expirations,
+            underlying_spot=underlying_spot,
+            option_type=config.option_type,
+            strike=config.strike,
+            min_days_to_expiration=config.min_days_to_expiration,
+            max_strike_distance_pct=config.max_strike_distance_pct,
+            min_open_interest=config.min_open_interest,
+            min_implied_volatility=config.min_implied_volatility,
+            fallback_volatility=config.fallback_volatility,
+            rate=config.rate,
+            history_period=config.history_period,
+            min_history_observations=config.min_history_observations,
+            max_expirations_to_scan=config.max_expirations_to_scan,
+            candidates_per_expiration=config.candidates_per_expiration,
+            target_abs_delta=config.target_abs_delta,
+            min_abs_delta=config.min_abs_delta,
+            max_abs_delta=config.max_abs_delta,
+        )
+    else:
+        chain = first_chain.calls if config.option_type == "call" else first_chain.puts
+        if chain is None or chain.empty:
+            raise ValueError(f"No {config.option_type} chain returned for {config.ticker} {first_expiration}")
+        selected_expiration = first_expiration
+        contract = select_option_contract(
+            chain=chain,
+            underlying_spot=underlying_spot,
+            strike=config.strike,
+            max_strike_distance_pct=config.max_strike_distance_pct,
+            min_open_interest=config.min_open_interest,
+            min_implied_volatility=config.min_implied_volatility,
+        )
+        option_history = download_option_history(str(contract["contractSymbol"]), period=config.history_period)
 
-    contract = select_option_contract(
-        chain=chain,
-        underlying_spot=underlying_spot,
-        strike=config.strike,
-        max_strike_distance_pct=config.max_strike_distance_pct,
-        min_open_interest=config.min_open_interest,
-        min_implied_volatility=config.min_implied_volatility,
-    )
-
-    option_history = download_option_history(str(contract["contractSymbol"]), period=config.history_period)
     start = option_history.index.min().strftime("%Y-%m-%d")
     end = (option_history.index.max() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     spot_history = download_price_history(MarketDataConfig(ticker=config.ticker, start=start, end=end))
@@ -280,7 +503,7 @@ def build_yahoo_observed_option_frame(config: YahooOptionContractConfig) -> tupl
     merged["rate"] = config.rate
     merged["option_type"] = config.option_type
     merged["dividend_yield"] = 0.0
-    chain_iv = float(contract["impliedVolatility"])
+    chain_iv = _first_finite_float([contract.get("impliedVolatility"), float("nan")])
     if np.isfinite(chain_iv) and chain_iv >= config.min_implied_volatility:
         merged["volatility"] = chain_iv
         volatility_source = "current_chain_iv"
@@ -311,6 +534,9 @@ def build_yahoo_observed_option_frame(config: YahooOptionContractConfig) -> tupl
         "current_underlying_spot": underlying_spot,
         "current_chain_iv": chain_iv,
         "volatility_source": volatility_source,
+        "history_observations": int(len(merged)),
+        "estimated_abs_delta": float(contract.get("estimated_abs_delta", float("nan"))),
+        "selection_method": "history_aware_auto" if config.expiration is None else "single_expiration",
     }
     return merged, metadata
 

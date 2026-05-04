@@ -4,7 +4,7 @@ import math
 import unittest
 
 from src.black_scholes import call_price, put_price
-from src.greeks import call_delta, call_greeks, gamma, put_delta, vega
+from src.greeks import call_delta, call_greeks, call_theta, gamma, put_delta, put_theta, vega
 
 
 class BlackScholesTests(unittest.TestCase):
@@ -42,7 +42,28 @@ class BlackScholesTests(unittest.TestCase):
         greeks = call_greeks(self.spot, self.strike, self.tau, self.rate, self.vol)
         self.assertEqual(set(greeks.keys()), {"delta", "gamma", "theta", "vega", "rho"})
 
+    def test_theta_matches_finite_difference_time_decay(self) -> None:
+        epsilon = 1e-5
+        call_decay = (
+            call_price(self.spot, self.strike, self.tau - epsilon, self.rate, self.vol)
+            - call_price(self.spot, self.strike, self.tau, self.rate, self.vol)
+        ) / epsilon
+        put_decay = (
+            put_price(self.spot, self.strike, self.tau - epsilon, self.rate, self.vol)
+            - put_price(self.spot, self.strike, self.tau, self.rate, self.vol)
+        ) / epsilon
+
+        self.assertAlmostEqual(
+            call_theta(self.spot, self.strike, self.tau, self.rate, self.vol),
+            call_decay,
+            places=3,
+        )
+        self.assertAlmostEqual(
+            put_theta(self.spot, self.strike, self.tau, self.rate, self.vol),
+            put_decay,
+            places=3,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
-
