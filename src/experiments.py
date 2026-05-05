@@ -444,18 +444,25 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     fig, spot_axis = plt.subplots(figsize=(10, 6))
     option_axis = spot_axis.twinx()
 
-    spot_axis.plot(representative_frame.index, representative_frame["spot"], label="spot")
+    spot_axis.plot(
+        representative_frame.index,
+        representative_frame["spot"],
+        label="spot",
+        color="tab:blue",
+    )
     spot_axis.axhline(
         float(representative_frame["strike"].iloc[0]),
         linestyle="--",
         linewidth=1.0,
         label="strike",
+        color="tab:red",
     )
 
     option_axis.plot(
         representative_frame.index,
         representative_frame["option_price"],
         label="option price",
+        color="tab:green",
     )
 
     spot_axis.set_title("Underlying Spot, Strike, and Option Price")

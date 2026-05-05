@@ -49,8 +49,8 @@ mff_hedging/
 Create and activate a virtual environment:
 
 ```bash
-python3 -m venv env
-source env/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 ```
 
 Install dependencies:
@@ -62,8 +62,8 @@ pip install -r requirements.txt
 If `pip` is not available but `uv` is installed, you can use:
 
 ```bash
-uv venv env
-source env/bin/activate
+uv venv venv
+source venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
@@ -74,7 +74,7 @@ The current repo already uses `env/bin/python` in the examples below.
 Use the project virtual environment:
 
 ```bash
-MPLCONFIGDIR=.cache/matplotlib env/bin/python -m unittest discover -s tests -v
+MPLCONFIGDIR=.cache/matplotlib venv/bin/python -m unittest discover -s tests -v
 ```
 
 Expected result:
