@@ -116,5 +116,45 @@ def summarize_results(results: pd.DataFrame) -> pd.Series:
             "portfolio_value_final": float(results["portfolio_value"].iloc[-1]),
             "rehedge_count": int(results["did_rehedge"].sum()),
             "mean_attr_residual": float(results["pnl_attribution_residual"].mean()),
+            "bkl_total_var":  float(results["bkl_var_cumulative"].iloc[-1])  if "bkl_var_cumulative" in results.columns else float("nan"),
+            "bkl_total_std":  float(results["bkl_std_cumulative"].iloc[-1])  if "bkl_std_cumulative" in results.columns else float("nan"),
         }
     )
+def add_bkl_variance_approximation(results: pd.DataFrame) -> pd.DataFrame:
+    """
+    Appends the Bertsimas-Kogan-Lo per-step discrete-hedging variance
+    approximation to a hedge result DataFrame.
+
+    Per step the BKL approximation of the instantaneous variance of
+    the replication error is:
+
+        bkl_var_approx = 0.5 * (sigma * S * Gamma)^2 * dt^2
+
+    where dt is the length of the rebalancing interval in years.
+    Summing these across all steps gives the cumulative BKL bound.
+
+    Reference: Bertsimas, Kogan, Lo (2000), "When Is Time Continuous?"
+    Journal of Financial Economics 55, 173-204.
+    """
+    if results.empty:
+        raise ValueError("results cannot be empty")
+    frame = results.copy()
+
+    # dt between this row and the previous rebalancing event (in years)
+    frame["dt"] = frame["tau"].shift(1).sub(frame["tau"]).fillna(0.0)
+
+    bkl_step = []
+    for i, row in frame.iterrows():
+        sigma = float(row["volatility"])
+        s     = float(row["spot"])
+        g     = float(row["gamma"])
+        dt    = float(row["dt"])
+        # variance contribution of one discrete rebalancing interval
+        bkl_step.append(0.5 * (sigma * s * g) ** 2 * dt ** 2)
+
+    frame["bkl_var_step"]        = bkl_step
+    frame["bkl_var_cumulative"]  = frame["bkl_var_step"].cumsum()
+    frame["bkl_std_cumulative"]  = frame["bkl_var_cumulative"].apply(
+        lambda v: v ** 0.5 if v >= 0 else 0.0
+    )
+    return frame

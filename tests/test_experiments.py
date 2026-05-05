@@ -58,6 +58,22 @@ class StrategySelectorTests(unittest.TestCase):
 
         self.assertEqual(selected.name, "every_2_days")
         self.assertAlmostEqual(float(selected["selector_objective"]), 0.8)
+    
+    def test_vol_mismatch_returns_aligned_frames(self) -> None:
+     from src.experiments import VolMismatchConfig, run_vol_mismatch_experiment
+    # This test uses the existing tiny synthetic frame, so mock with unittest.mock
+    # if live data unavailable — see existing test patterns in the file.
+     cfg = VolMismatchConfig(
+        ticker="SPY", start="2023-01-01", end="2023-03-01",
+        maturity_days=21, fixed_volatility=0.20,
+        realized_vol_window=10, rate=0.02,
+        transaction_cost_bps=0.0, rehedge_every=1,
+     )
+     fixed, real, comparison = run_vol_mismatch_experiment(cfg)
+     self.assertEqual(len(fixed), len(real))
+     self.assertIn("fixed_vol",    comparison.index)
+     self.assertIn("realized_vol", comparison.index)
+     self.assertIn("hedge_error_rmse", comparison.columns)
 
 
 if __name__ == "__main__":
