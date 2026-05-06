@@ -2,9 +2,14 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{hyperref}
+\usepackage{hyperref}
 \usepackage{amsfonts}
 \usepackage{graphicx} % Required for inserting images
 \usepackage{float} % for [H] placement if needed
+\usepackage[margin=1in]{geometry}   
+\title{Dynamic Hedging and Hedging Error Attribution}
+\author{Mathematics For Finance}
+\date{May 2026}
 \usepackage[margin=1in]{geometry}   
 \title{Dynamic Hedging and Hedging Error Attribution}
 \author{Mathematics For Finance}
@@ -17,13 +22,17 @@
 \section{Introduction}
 
 Options are widely used in financial markets for hedging, speculation, and risk management. A central challenge in quantitative finance is managing option risk through dynamic hedging. The Black–Scholes framework provides the theoretical foundation for this problem, under assumptions of continuous trading and ideal conditions. However, markets are characterized by discrete trading, transaction costs, and time-varying volatility. These deviations make perfect replication impossible and introduce hedging error. Understanding and quantifying this error is essential.
+Options are widely used in financial markets for hedging, speculation, and risk management. A central challenge in quantitative finance is managing option risk through dynamic hedging. The Black–Scholes framework provides the theoretical foundation for this problem, under assumptions of continuous trading and ideal conditions. However, markets are characterized by discrete trading, transaction costs, and time-varying volatility. These deviations make perfect replication impossible and introduce hedging error. Understanding and quantifying this error is essential.
 
+This study performs a dynamic hedging for European options that bridges theory and real-world implementation. It evaluates hedging performance under discrete rebalancing, transaction costs. The framework compares multiple strategies across rebalancing frequencies and benchmarks them against no-hedge and static hedge approaches. To analyze hedging error, we use two complementary tools: the Bertsimas–Kogan–Lo (BKL) approximation; which quantifies discretization-induced variance as a baseline for hedging error variance and a Greek-based P\&L attribution. The results show that real-world hedging performance depends on a combination of discretization effects, transaction costs, and volatility dynamics, underscoring the limitations of idealized models.
 This study performs a dynamic hedging for European options that bridges theory and real-world implementation. It evaluates hedging performance under discrete rebalancing, transaction costs. The framework compares multiple strategies across rebalancing frequencies and benchmarks them against no-hedge and static hedge approaches. To analyze hedging error, we use two complementary tools: the Bertsimas–Kogan–Lo (BKL) approximation; which quantifies discretization-induced variance as a baseline for hedging error variance and a Greek-based P\&L attribution. The results show that real-world hedging performance depends on a combination of discretization effects, transaction costs, and volatility dynamics, underscoring the limitations of idealized models.
 \section{Background}
 \subsection{ Conditional Value at Risk (CVar)}
 
 To quantify tail risk in the dynamic hedging strategy, we employ CVaR. Unlike VaR, which is not a coherent risk measure, CVaR provides a mathematically consistent and robust characterization of extreme losses. This makes it particularly suitable for evaluating the risk of discrete hedging strategies, where large deviations may arise due to market frictions and rebalancing constraints.
+To quantify tail risk in the dynamic hedging strategy, we employ CVaR. Unlike VaR, which is not a coherent risk measure, CVaR provides a mathematically consistent and robust characterization of extreme losses. This makes it particularly suitable for evaluating the risk of discrete hedging strategies, where large deviations may arise due to market frictions and rebalancing constraints.
 
+Let $L$ denote a continuous random variable representing the loss of the delta-hedging portfolio. 
 Let $L$ denote a continuous random variable representing the loss of the delta-hedging portfolio. 
 \[
 L = - \big( V_{\text{portfolio}} - V_{\text{option}} \big),
@@ -31,10 +40,12 @@ L = - \big( V_{\text{portfolio}} - V_{\text{option}} \big),
 where $V_{\text{portfolio}}$ is the value of the replicating portfolio and $V_{\text{option}}$ is the theoretical option price.
 
 Let $(\Omega, \mathcal{F}, \mathbb{P})$ be a probability space and let $F_L(l) = \mathbb{P}(L \leq l)$ denote the cumulative distribution function (CDF) of $L$. For a confidence level $\alpha \in (0,1)$ the VaR is defined as the $\alpha$-quantile of the loss distribution:
+Let $(\Omega, \mathcal{F}, \mathbb{P})$ be a probability space and let $F_L(l) = \mathbb{P}(L \leq l)$ denote the cumulative distribution function (CDF) of $L$. For a confidence level $\alpha \in (0,1)$ the VaR is defined as the $\alpha$-quantile of the loss distribution:
 \[
 \text{VaR}_\alpha(L) = \inf \{ l \in \mathbb{R} \mid F_L(l) \geq \alpha \}.
 \]
 
+The CVaR is defined as the expected loss conditional on exceeding the VaR threshold. For continuous distributions:
 The CVaR is defined as the expected loss conditional on exceeding the VaR threshold. For continuous distributions:
 \[
 \text{CVaR}_\alpha(L) = \mathbb{E} \left[ L \mid L \geq \text{VaR}_\alpha(L) \right].
@@ -61,10 +72,13 @@ J(\Delta t) = \text{CVaR}_\alpha\big(L(\Delta t)\big)
 where $\text{TC}(\Delta t)$ denotes the cumulative transaction costs associated with the hedging strategy.
 
 This formulation penalizes extreme losses through CVaR while incorporating the economic cost of rebalancing. As a result, it provides a tractable discrete strategy-selection framework for determining an optimal hedging frequency that balances risk reduction against market frictions.
+This formulation penalizes extreme losses through CVaR while incorporating the economic cost of rebalancing. As a result, it provides a tractable discrete strategy-selection framework for determining an optimal hedging frequency that balances risk reduction against market frictions.
 
 \subsection{The Bertsimas--Kogan--Lo (BKL) }
 The classical BlackScholes framework assumes continuous-time trading, under which a derivative can be perfectly replicated by dynamically adjusting a self-financing portfolio. In this idealized setting, continuous rebalancing ($\Delta t \to 0$) ensures that the replication error is identically zero. However, trading occurs at discrete time intervals. This introduces \emph{discretization error}, as the hedging portfolio is only updated intermittently while the underlying asset evolves continuously. The BKL framework provides a mathematical foundation to quantify this effect by deriving an explicit approximation for the variance of the discrete hedging error.
+The classical BlackScholes framework assumes continuous-time trading, under which a derivative can be perfectly replicated by dynamically adjusting a self-financing portfolio. In this idealized setting, continuous rebalancing ($\Delta t \to 0$) ensures that the replication error is identically zero. However, trading occurs at discrete time intervals. This introduces \emph{discretization error}, as the hedging portfolio is only updated intermittently while the underlying asset evolves continuously. The BKL framework provides a mathematical foundation to quantify this effect by deriving an explicit approximation for the variance of the discrete hedging error.
 
+Delta hedging neutralizes the first-order sensitivity of the option price with respect to the underlying asset. However, the option remains exposed to its second-order sensitivity, known as Gamma ($\Gamma$). Between rebalancing times, the underlying asset price changes randomly, and the linear hedging portfolio cannot capture the curvature of the option payoff. This mismatch generates a residual tracking error. The primary utility of the BKL approximation is characterizing the expected variance of this Gamma-driven residual error across discrete time steps.
 Delta hedging neutralizes the first-order sensitivity of the option price with respect to the underlying asset. However, the option remains exposed to its second-order sensitivity, known as Gamma ($\Gamma$). Between rebalancing times, the underlying asset price changes randomly, and the linear hedging portfolio cannot capture the curvature of the option payoff. This mismatch generates a residual tracking error. The primary utility of the BKL approximation is characterizing the expected variance of this Gamma-driven residual error across discrete time steps.
 
 
@@ -73,6 +87,7 @@ Let $S_t$ denote the underlying asset price following a geometric Brownian motio
 \Delta V_t \approx \Theta_t \Delta t + \Delta_t \Delta S_t + \frac{1}{2} \Gamma_t (\Delta S_t)^2.
 \]
 
+A delta-hedged portfolio eliminates the linear term $\Delta_t \Delta S_t$, leaving a residual error driven by Gamma. Using the BS partial differential equation, the one-step hedging error can be approximated as:
 A delta-hedged portfolio eliminates the linear term $\Delta_t \Delta S_t$, leaving a residual error driven by Gamma. Using the BS partial differential equation, the one-step hedging error can be approximated as:
 \[
 e_t \approx \frac{1}{2} \Gamma_t \left[ (\Delta S_t)^2 - \sigma^2 S_t^2 \Delta t \right].
@@ -89,11 +104,13 @@ Although the expected value of the local error is zero, its variance is strictly
 \]
 
 Aggregating over $N$ discrete rebalancing intervals up to maturity $T$, the total hedging error variance is:
+Aggregating over $N$ discrete rebalancing intervals up to maturity $T$, the total hedging error variance is:
 \[
 \text{Var}_{\text{Total}} \approx \sum_{i=1}^{N} 
 \frac{1}{2} \left( \sigma^2 S_{t_i}^2 \Gamma_{t_i} \right)^2 (\Delta t)^2.
 \]
 
+% The BKL result provides a crucial extension of the Black--Scholes model by explicitly quantifying the impact of discrete trading. While Black--Scholes guarantees perfect replication in continuous time, BKL demonstrates that in realistic settings, hedging error is:
 % The BKL result provides a crucial extension of the Black--Scholes model by explicitly quantifying the impact of discrete trading. While Black--Scholes guarantees perfect replication in continuous time, BKL demonstrates that in realistic settings, hedging error is:
 
 % \begin{itemize}
@@ -101,7 +118,13 @@ Aggregating over $N$ discrete rebalancing intervals up to maturity $T$, the tota
 %     \item \textbf{Gamma-driven:} Higher curvature leads to larger replication error.
 %     \item \textbf{Frequency-dependent:} The error decreases linearly as $\Delta t \to 0$.
 % \end{itemize}
+% \begin{itemize}
+%     \item \textbf{Unavoidable:} It arises purely from discrete-time trading constraints.
+%     \item \textbf{Gamma-driven:} Higher curvature leads to larger replication error.
+%     \item \textbf{Frequency-dependent:} The error decreases linearly as $\Delta t \to 0$.
+% \end{itemize}
 
+% This quadratic scaling formally justifies the convergence of discrete hedging to the continuous-time ideal.
 % This quadratic scaling formally justifies the convergence of discrete hedging to the continuous-time ideal.
 
 % \subsection{Relevance for Empirical Hedging}
@@ -112,6 +135,7 @@ Aggregating over $N$ discrete rebalancing intervals up to maturity $T$, the tota
 \section{Experimental details}
 This study develops a dynamic, self-financing delta-hedging simulation framework for European options under discrete trading constraints. The objective is to quantify replication error, attribute its sources, and evaluate optimal hedging frequency under transaction costs and tail-risk considerations. The framework is implemented across two distinct environments: a historical-path Black--Scholes benchmark for theoretical validation and a real-market pipeline utilizing historical options and equity data.
 
+\subsection{Experimental Environments}
 \subsection{Experimental Environments}
 
 \subsubsection{Historical-Path Black--Scholes Benchmark}
@@ -144,6 +168,9 @@ Options are selected dynamically based on adherence to rigorous liquidity and mo
     \item \textbf{Maturity Constraint:} Contracts must have $\geq 30$ calendar days to expiration.
     \item \textbf{Moneyness and Delta Filters:} Strike prices are strictly restricted to within $\pm 10\%$ of the prevailing spot price, prioritizing contracts whose absolute Black--Scholes Delta ($|\Delta|$) is between $0.25$ and $0.75$, effectively targeting near-the-money derivatives.
     \item \textbf{Liquidity Threshold:} Selected contracts must exhibit strictly positive open interest.
+    \item \textbf{Maturity Constraint:} Contracts must have $\geq 30$ calendar days to expiration.
+    \item \textbf{Moneyness and Delta Filters:} Strike prices are strictly restricted to within $\pm 10\%$ of the prevailing spot price, prioritizing contracts whose absolute Black--Scholes Delta ($|\Delta|$) is between $0.25$ and $0.75$, effectively targeting near-the-money derivatives.
+    \item \textbf{Liquidity Threshold:} Selected contracts must exhibit strictly positive open interest.
 \end{itemize}
 
 In real markets, implied volatility is often unavailable or heavily illiquid. To maintain consistency across the timeline, when implied volatility falls below a $5\%$ algorithmic boundary, the framework defaults to a 21-day rolling historical realized volatility estimator. Option and underlying time series are synchronized via inner joins on daily timestamps, computing time-to-maturity ($\tau$) as the annualized calendar fraction $\tau = (T - t) / 365$.
@@ -153,12 +180,26 @@ In real markets, implied volatility is often unavailable or heavily illiquid. To
 Option valuations and associated Greeks are computed sequentially under the standard BS framework. The core sensitivity, Delta ($\Delta$), dictates the theoretical share position required for replication, where $\Delta = e^{-q\tau}\Phi(d_1)$. 
 
 The strategy mimics the behavior of an option writer establishing a locally risk-neutral, self-financing replicating portfolio. At inception $t_0$, the cash account absorbs the theoretical option premium:
+In real markets, implied volatility is often unavailable or heavily illiquid. To maintain consistency across the timeline, when implied volatility falls below a $5\%$ algorithmic boundary, the framework defaults to a 21-day rolling historical realized volatility estimator. Option and underlying time series are synchronized via inner joins on daily timestamps, computing time-to-maturity ($\tau$) as the annualized calendar fraction $\tau = (T - t) / 365$.
+
+\subsection{Pricing and Portfolio Dynamics}
+
+Option valuations and associated Greeks are computed sequentially under the standard BS framework. The core sensitivity, Delta ($\Delta$), dictates the theoretical share position required for replication, where $\Delta = e^{-q\tau}\Phi(d_1)$. 
+
+The strategy mimics the behavior of an option writer establishing a locally risk-neutral, self-financing replicating portfolio. At inception $t_0$, the cash account absorbs the theoretical option premium:
 \[
+\text{Cash}_{t_0} = V_{\text{option}}(t_0).
 \text{Cash}_{t_0} = V_{\text{option}}(t_0).
 \]
 
 At any discrete rebalancing interval $t$, the portfolio is aligned to the target Delta position ($\Delta_{\text{target}} = \Delta_t$). The transaction cost (TC) incurred at $t$ is strictly proportional to the rebalancing volume:
+At any discrete rebalancing interval $t$, the portfolio is aligned to the target Delta position ($\Delta_{\text{target}} = \Delta_t$). The transaction cost (TC) incurred at $t$ is strictly proportional to the rebalancing volume:
 \[
+\text{TC}_t = |\Delta_t - \Delta_{t-1}| \times S_t \times c,
+\]
+where $c = 0.0005$ dictates the 5 basis-point friction.
+
+Between intervals, the uninvested cash balance accrues risk-free interest. Accounting for trade execution and transaction costs, the cash balance evolves recursively as:
 \text{TC}_t = |\Delta_t - \Delta_{t-1}| \times S_t \times c,
 \]
 where $c = 0.0005$ dictates the 5 basis-point friction.
@@ -171,10 +212,26 @@ Between intervals, the uninvested cash balance accrues risk-free interest. Accou
 The marked-to-market value of the tracking portfolio is thus $V_{\text{portfolio}, t} = \Delta_t S_t + \text{Cash}_t$, yielding an instantaneous discrete hedging error defined as:
 \[
 e_t = V_{\text{portfolio},t} - V_{\text{option},t}.
+\text{Cash}_t = \text{Cash}_{t-1} e^{r \Delta t} - (\Delta_t - \Delta_{t-1}) S_t - \text{TC}_t.
+\]
+
+The marked-to-market value of the tracking portfolio is thus $V_{\text{portfolio}, t} = \Delta_t S_t + \text{Cash}_t$, yielding an instantaneous discrete hedging error defined as:
+\[
+e_t = V_{\text{portfolio},t} - V_{\text{option},t}.
 \]
 
 \subsection{Hedging Strategies and Optimization Objective}
+\subsection{Hedging Strategies and Optimization Objective}
 
+Hedging profiles are evaluated across four structured paradigms:
+\begin{enumerate}
+    \item \textbf{Periodic Hedging:} The target Delta is realigned at fixed intervals of 1, 2, or 5 trading days.
+    \item \textbf{Static Hedging:} A strict buy-and-hold methodology where the initial $\Delta_0$ is held until maturity without further rebalancing.
+    \item \textbf{No Hedge:} An unhedged benchmark corresponding to a premium-only cash balance maintained against the option liability.
+    \item \textbf{Continuous Benchmark:} An idealized limit serving as a benchmark against tracking error constraints.
+\end{enumerate}
+
+To isolate the optimal discrete frequency, strategies are scored heavily on a strategy-selection objective function weighing severe replication failure against accumulated transaction costs:
 Hedging profiles are evaluated across four structured paradigms:
 \begin{enumerate}
     \item \textbf{Periodic Hedging:} The target Delta is realigned at fixed intervals of 1, 2, or 5 trading days.
@@ -207,7 +264,28 @@ Second, a full Greek attribution decomposes observed aggregate P\&L perturbation
 \Delta \text{PnL}_{\rho} &= \rho_{t-1}(r_t - r_{t-1}).
 \end{align*}
 
+Second, a full Greek attribution decomposes observed aggregate P\&L perturbations into their generating fundamental vectors:
+\begin{align*}
+\Delta \text{PnL}_{\Delta} &= \Delta_{t-1}(S_t - S_{t-1}), \\
+\Delta \text{PnL}_{\Gamma} &= \frac{1}{2}\Gamma_{t-1}(S_t - S_{t-1})^2, \\
+\Delta \text{PnL}_{\Theta} &= \Theta_{t-1}(\tau_{t-1} - \tau_t), \\
+\Delta \text{PnL}_{\mathcal{V}} &= \mathcal{V}_{t-1}(\sigma_t - \sigma_{t-1}), \\
+\Delta \text{PnL}_{\rho} &= \rho_{t-1}(r_t - r_{t-1}).
+\end{align*}
+
 \subsection{Volatility Mismatch Experiment}
+Under idealized assumptions, daily rebalancing is sufficient to mitigate discretization errors according to the BKL framework. However, theoretical models frequently fail upon misspecification of the volatility parameter ($\sigma$). 
+
+To isolate and rigorously penalize tracking error decoupled from frequency artifacts, a dedicated volatility mismatch assay is executed under a daily-rebalancing ($\Delta t = 1$) envelope applying two disjoint structural inputs:
+\begin{enumerate}
+    \item \textbf{Fixed Volatility Baseline:} Prices and Greeks are computed exclusively referencing a static initial value of $\sigma = 0.20$.
+    \item \textbf{Realized Volatility Baseline:} Parameters dynamically track a backward-looking 21-day realized volatility window:
+    \[
+    \sigma_t = \sqrt{252} \cdot \text{StdDev} \left( \ln \left( \frac{S_{t-i}}{S_{t-i-1}} \right) \right)_{i=1}^{21}.
+    \]
+\end{enumerate}
+
+Simulating these tracks in parallel isolates tracking deviations purely attributable to structural parameter mismatches, translating directly into residual $\Gamma$ and $\mathcal{V}$ artifacts over identical market events. This assesses the model's tolerance limits when constrained assumptions fundamentally detach from realized distributional physics.
 Under idealized assumptions, daily rebalancing is sufficient to mitigate discretization errors according to the BKL framework. However, theoretical models frequently fail upon misspecification of the volatility parameter ($\sigma$). 
 
 To isolate and rigorously penalize tracking error decoupled from frequency artifacts, a dedicated volatility mismatch assay is executed under a daily-rebalancing ($\Delta t = 1$) envelope applying two disjoint structural inputs:
@@ -238,6 +316,7 @@ The continuous-time benchmark yields zero replication error and zero transaction
 
 Benchmark strategies exhibit significantly larger deviations:
 \begin{itemize}
+    \item No hedge: $\$6.62$
     \item No hedge: $\$6.62$
     \item Static hedge: $\$4.79$
 \end{itemize}
@@ -453,6 +532,7 @@ Figure~\ref{fig:bkl_comparison} compares realized hedge-error dispersion with th
 
 \subsection{Impact of Volatility Misspecification}
 
+The empirical results reveal that volatility misspecification is a dominant source of hedging error in practical applications. When relying on historical realized volatility over a rolling window, the tracking portfolio fails to properly anchor to the implied structural parameters of the market. This produces substantial unhedged vega risk.
 The empirical results reveal that volatility misspecification is a dominant source of hedging error in practical applications. When relying on historical realized volatility over a rolling window, the tracking portfolio fails to properly anchor to the implied structural parameters of the market. This produces substantial unhedged vega risk.
 
 Figures~\ref{fig:vol_paths} and \ref{fig:vol_error} illustrate the volatility mismatch experiment. The fixed volatility assumption fails to capture large fluctuations in realized volatility, leading to systematic hedging error.
