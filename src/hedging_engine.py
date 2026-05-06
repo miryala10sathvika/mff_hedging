@@ -192,6 +192,10 @@ def run_delta_hedge(option_data: pd.DataFrame, config: HedgeConfig) -> pd.DataFr
                 "total_pnl": total_pnl,
                 "delta_change": 0.0 if previous_delta is None else row["delta"] - previous_delta,
                 "did_rehedge": did_rehedge,
+                "rehedge_every": config.rehedge_every,
+                "is_static_hedge": config.is_static_hedge,
+                "is_no_hedge": config.is_no_hedge,
+                "is_continuous_ideal": config.is_continuous_ideal,
             }
         )
 

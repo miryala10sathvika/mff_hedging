@@ -99,6 +99,27 @@ class HedgingEngineTests(unittest.TestCase):
         self.assertIn("bkl_var_cumulative", result.columns)
         self.assertTrue((result["bkl_var_cumulative"] >= 0).all())
 
+    def test_bkl_scales_with_rehedge_interval(self) -> None:
+        idx = pd.date_range("2024-01-02", periods=7, freq="B")
+        option_data = pd.DataFrame(
+            {
+                "spot": [100.0, 101.0, 100.5, 102.0, 101.5, 103.0, 102.5],
+                "strike": [100.0] * 7,
+                "tau": [(7 - i) / 252 for i in range(7)],
+                "rate": [0.02] * 7,
+                "volatility": [0.20] * 7,
+            },
+            index=idx,
+        )
+        daily = add_bkl_variance_approximation(
+            add_greek_pnl_attribution(run_delta_hedge(option_data, HedgeConfig(rehedge_every=1)))
+        )
+        every_two = add_bkl_variance_approximation(
+            add_greek_pnl_attribution(run_delta_hedge(option_data, HedgeConfig(rehedge_every=2)))
+        )
+
+        self.assertGreater(every_two["bkl_std_cumulative"].iloc[-1], daily["bkl_std_cumulative"].iloc[-1])
+
     def test_summary_reports_positive_loss_cvar(self) -> None:
         results = pd.DataFrame(
             {
@@ -114,6 +135,21 @@ class HedgingEngineTests(unittest.TestCase):
         summary = summarize_results(results)
         self.assertGreaterEqual(summary["var_95_daily"], 0.0)
         self.assertGreaterEqual(summary["cvar_95_daily"], 0.0)
+
+    def test_summary_cvar_uses_hedge_error_loss(self) -> None:
+        results = pd.DataFrame(
+            {
+                "hedge_error": [0.0, 0.0, 0.0],
+                "transaction_cost": [0.0, 0.0, 0.0],
+                "total_pnl": [0.0, -10.0, -10.0],
+                "portfolio_value": [1.0, 1.0, 1.0],
+                "did_rehedge": [True, True, True],
+                "pnl_attribution_residual": [0.0, 0.0, 0.0],
+            }
+        )
+
+        summary = summarize_results(results)
+        self.assertAlmostEqual(summary["cvar_95_daily"], 0.0)
 
 
 if __name__ == "__main__":

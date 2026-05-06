@@ -88,10 +88,11 @@ def summarize_results(results: pd.DataFrame) -> pd.Series:
     hedge_error_rmse = math.sqrt(float((results["hedge_error"] ** 2).mean()))
     hedge_error_mae = float(results["hedge_error"].abs().mean())
 
-    # Positive VaR/CVaR on daily losses, where loss is negative P&L.
-    pnl_series = results["total_pnl"].dropna()
-    if not pnl_series.empty:
-        loss_series = -pnl_series
+    # VaR/CVaR follow the report's hedge-error loss definition:
+    # L = -(portfolio value - option value) = -hedge_error.
+    hedge_error_series = results["hedge_error"].dropna()
+    if not hedge_error_series.empty:
+        loss_series = -hedge_error_series
         var_95 = float(loss_series.quantile(0.95))
         cvar_95 = float(loss_series[loss_series >= var_95].mean())
         var_99 = float(loss_series.quantile(0.99))
@@ -126,13 +127,14 @@ def add_bkl_variance_approximation(results: pd.DataFrame) -> pd.DataFrame:
     Appends the Bertsimas-Kogan-Lo per-step discrete-hedging variance
     approximation to a hedge result DataFrame.
 
-    Per step the BKL approximation of the instantaneous variance of
-    the replication error is:
+    Per rebalancing interval, the BKL approximation of the instantaneous
+    variance of the replication error is:
 
-        bkl_var_approx = 0.5 * (sigma * S * Gamma)^2 * dt^2
+        bkl_var_approx = 0.5 * (sigma^2 * S^2 * Gamma)^2 * dt^2
 
     where dt is the length of the rebalancing interval in years.
-    Summing these across all steps gives the cumulative BKL bound.
+    Summing these across actual rebalancing intervals gives the cumulative
+    BKL bound for a given hedge frequency.
 
     Reference: Bertsimas, Kogan, Lo (2000), "When Is Time Continuous?"
     Journal of Financial Economics 55, 173-204.
@@ -141,17 +143,48 @@ def add_bkl_variance_approximation(results: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("results cannot be empty")
     frame = results.copy()
 
-    # dt between this row and the previous rebalancing event (in years)
-    frame["dt"] = frame["tau"].shift(1).sub(frame["tau"]).fillna(0.0)
+    if bool(frame.get("is_continuous_ideal", pd.Series(False, index=frame.index)).iloc[0]):
+        frame["dt"] = frame["tau"].shift(1).sub(frame["tau"]).fillna(0.0)
+        frame["bkl_var_step"] = 0.0
+        frame["bkl_var_cumulative"] = 0.0
+        frame["bkl_std_cumulative"] = 0.0
+        return frame
 
-    bkl_step = []
-    for i, row in frame.iterrows():
-        sigma = float(row["volatility"])
-        s     = float(row["spot"])
-        g     = float(row["gamma"])
-        dt    = float(row["dt"])
-        # variance contribution of one discrete rebalancing interval
-        bkl_step.append(0.5 * (sigma**2 * s**2 * g) ** 2 * dt ** 2)
+    if "did_rehedge" not in frame.columns:
+        frame["did_rehedge"] = True
+
+    frame["dt"] = 0.0
+    bkl_step = [0.0] * len(frame)
+    last_rehedge_pos: int | None = None
+
+    def interval_variance(previous_rehedge: pd.Series, current_row: pd.Series) -> tuple[float, float]:
+        dt = float(previous_rehedge["tau"] - current_row["tau"])
+        if dt <= 0.0:
+            return 0.0, 0.0
+        sigma = float(previous_rehedge["volatility"])
+        s = float(previous_rehedge["spot"])
+        g = float(previous_rehedge["gamma"])
+        return dt, 0.5 * (sigma**2 * s**2 * g) ** 2 * dt**2
+
+    for pos, (_, row) in enumerate(frame.iterrows()):
+        if not bool(row["did_rehedge"]):
+            continue
+        if last_rehedge_pos is None:
+            last_rehedge_pos = pos
+            continue
+
+        previous_rehedge = frame.iloc[last_rehedge_pos]
+        dt, variance = interval_variance(previous_rehedge, row)
+        frame.iloc[pos, frame.columns.get_loc("dt")] = dt
+        bkl_step[pos] = variance
+        last_rehedge_pos = pos
+
+    if last_rehedge_pos is not None and last_rehedge_pos < len(frame) - 1:
+        previous_rehedge = frame.iloc[last_rehedge_pos]
+        final_row = frame.iloc[-1]
+        dt, variance = interval_variance(previous_rehedge, final_row)
+        frame.iloc[-1, frame.columns.get_loc("dt")] = dt
+        bkl_step[-1] += variance
 
     frame["bkl_var_step"]        = bkl_step
     frame["bkl_var_cumulative"]  = frame["bkl_var_step"].cumsum()

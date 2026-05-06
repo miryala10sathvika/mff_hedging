@@ -777,7 +777,7 @@ def save_summary_plots(summary: pd.DataFrame, output_dir: str = "outputs/figures
         ("hedge_error_abs", "Absolute Final Hedge Error"),
         ("hedge_error_rmse", "Hedge Error RMSE"),
         ("total_transaction_cost", "Total Transaction Cost"),
-        ("cvar_95_daily", "Daily CVaR 95%"),
+        ("cvar_95_daily", "Hedge-Loss CVaR 95%"),
     ]
     available_metrics = [(column, title) for column, title in metrics if column in summary.columns]
     if not available_metrics:
