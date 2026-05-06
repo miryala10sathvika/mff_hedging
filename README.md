@@ -116,8 +116,10 @@ ExperimentConfig(
 Outputs:
 
 ```text
-outputs/figures/portfolio_value_paths.png
-outputs/figures/final_hedge_error.png
+outputs/figures/portfolio_value_paths.pdf
+outputs/figures/greek_pnl_attribution_cumulative.pdf
+outputs/figures/bkl_vs_realized.pdf
+outputs/figures/final_hedge_error.pdf
 outputs/tables/summary.csv
 ```
 
@@ -162,8 +164,10 @@ Important behavior:
 Outputs:
 
 ```text
-outputs/figures/yahoo_option/portfolio_value_paths.png
-outputs/figures/yahoo_option/final_hedge_error.png
+outputs/figures/yahoo_option/portfolio_value_paths.pdf
+outputs/figures/yahoo_option/greek_pnl_attribution_cumulative.pdf
+outputs/figures/yahoo_option/bkl_vs_realized.pdf
+outputs/figures/yahoo_option/final_hedge_error.pdf
 outputs/tables/yahoo_option_summary.csv
 ```
 
@@ -310,7 +314,7 @@ rehedge_frequencies=(1, 3, 5, 10)
 - For Yahoo option experiments, current chain IV is used if plausible; otherwise, rolling realized volatility is used as a fallback.
 - The `continuous_ideal` strategy is a theoretical reference, not a tradable strategy.
 - The automatic selector ranks only periodic rehedging strategies such as `every_1_day` and `every_5_days`; it does not choose among `no_hedge`, `static_hedge`, or `continuous_ideal`.
-- The explicit Bertsimas-Kogan-Lo discrete hedging variance approximation mentioned in the proposal is not yet implemented.
+- The explicit Bertsimas-Kogan-Lo discrete hedging variance approximation captures the variance of replication error specifically due to discrete rebalancing.
 
 ## Useful Project Documents
 

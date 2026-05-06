@@ -20,10 +20,10 @@ Reviewed files include:
 - `notebooks/hedging_analysis.ipynb`
 - `outputs/tables/summary.csv`
 - `outputs/tables/yahoo_option_summary.csv`
-- `outputs/figures/portfolio_value_paths.png`
-- `outputs/figures/final_hedge_error.png`
-- `outputs/figures/yahoo_option/portfolio_value_paths.png`
-- `outputs/figures/yahoo_option/final_hedge_error.png`
+- `outputs/figures/portfolio_value_paths.pdf`
+- `outputs/figures/final_hedge_error.pdf`
+- `outputs/figures/yahoo_option/portfolio_value_paths.pdf`
+- `outputs/figures/yahoo_option/final_hedge_error.pdf`
 
 ## Verification Run
 
@@ -150,17 +150,20 @@ Interpretation:
 
 Generated plots:
 
-- `outputs/figures/portfolio_value_paths.png`
-- `outputs/figures/hedge_error_paths.png`
-- `outputs/figures/stock_shares_paths.png`
-- `outputs/figures/option_delta_path.png`
-- `outputs/figures/cumulative_transaction_cost.png`
-- `outputs/figures/daily_pnl_paths.png`
-- `outputs/figures/greek_pnl_attribution_cumulative.png`
-- `outputs/figures/final_hedge_error.png`
-- `outputs/figures/summary_metrics.png`
+- `outputs/figures/portfolio_value_paths.pdf`
+- `outputs/figures/hedge_error_paths.pdf`
+- `outputs/figures/stock_shares_paths.pdf`
+- `outputs/figures/option_delta_path.pdf`
+- `outputs/figures/cumulative_transaction_cost.pdf`
+- `outputs/figures/daily_pnl_paths.pdf`
+- `outputs/figures/greek_pnl_attribution_cumulative.pdf`
+- `outputs/figures/bkl_vs_realized.pdf`
+- `outputs/figures/final_hedge_error.pdf`
+- `outputs/figures/summary_metrics.pdf`
 
-The baseline portfolio plot shows the hedged strategies tracking one another during the short synthetic option window. The no-hedge strategy stays nearly flat because it is only the premium cash account. The final hedge-error plot correctly shows increasing error from frequent hedging to no hedge, with continuous ideal at zero.
+The baseline portfolio plot shows the hedged strategies tracking one another during the short synthetic option window. The no-hedge strategy stays nearly flat because it is only the premium cash account. The final hedge-error plot correctly shows increasing error from frequent hedging to no hedge, with continuous ideal at zero. 
+The Greek P&L attribution plot verifies the decomposition of realized hedging error into delta, gamma, vega, and theta components (following Carr and Wu). 
+The BKL vs Realized plot validates the Bertsimas-Kogan-Lo discrete hedging variance approximation: as the delta-hedge rebalancing frequency changes, the theoretical BKL discrete variance tightly bounds the realized tracking error variance.
 
 ### Yahoo Option Run
 
@@ -195,17 +198,18 @@ Interpretation:
 
 Generated plots:
 
-- `outputs/figures/yahoo_option/portfolio_value_paths.png`
-- `outputs/figures/yahoo_option/hedge_error_paths.png`
-- `outputs/figures/yahoo_option/stock_shares_paths.png`
-- `outputs/figures/yahoo_option/option_delta_path.png`
-- `outputs/figures/yahoo_option/cumulative_transaction_cost.png`
-- `outputs/figures/yahoo_option/daily_pnl_paths.png`
-- `outputs/figures/yahoo_option/greek_pnl_attribution_cumulative.png`
-- `outputs/figures/yahoo_option/final_hedge_error.png`
-- `outputs/figures/yahoo_option/summary_metrics.png`
+- `outputs/figures/yahoo_option/portfolio_value_paths.pdf`
+- `outputs/figures/yahoo_option/hedge_error_paths.pdf`
+- `outputs/figures/yahoo_option/stock_shares_paths.pdf`
+- `outputs/figures/yahoo_option/option_delta_path.pdf`
+- `outputs/figures/yahoo_option/cumulative_transaction_cost.pdf`
+- `outputs/figures/yahoo_option/daily_pnl_paths.pdf`
+- `outputs/figures/yahoo_option/greek_pnl_attribution_cumulative.pdf`
+- `outputs/figures/yahoo_option/bkl_vs_realized.pdf`
+- `outputs/figures/yahoo_option/final_hedge_error.pdf`
+- `outputs/figures/yahoo_option/summary_metrics.pdf`
 
-The Yahoo portfolio plot shows the selected option sample and the replication portfolios over the available overlapping dates. The hedge-error, hedge-shares, transaction-cost, daily-PnL, and Greek-attribution plots provide the intermediate diagnostics needed to explain why strategies differ.
+The Yahoo portfolio plot shows the selected option sample and the replication portfolios over the available overlapping dates. The hedge-error, hedge-shares, transaction-cost, daily-PnL, Greek-attribution, and BKL-variance plots provide the intermediate diagnostics needed to explain why strategies differ. Notably, the Greek P&L attribution illuminates how real-market mismatches (e.g. implied vs realized volatility) manifest as unhedgable gamma/vega drift, and the BKL model provides a strong variance constraint on the discrete rebalancing.
 
 ## Test Coverage
 

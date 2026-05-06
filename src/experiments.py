@@ -475,7 +475,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     spot_axis.legend(lines + option_lines, labels + option_labels, loc="best")
 
     fig.tight_layout()
-    market_path = output_path / "market_inputs.png"
+    market_path = output_path / "market_inputs.pdf"
     fig.savefig(market_path, dpi=150)
     plt.close(fig)
     saved_files.append(market_path)
@@ -501,7 +501,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     plt.legend()
     plt.tight_layout()
 
-    portfolio_path = output_path / "portfolio_value_paths.png"
+    portfolio_path = output_path / "portfolio_value_paths.pdf"
     plt.savefig(portfolio_path, dpi=150)
     plt.close()
     saved_files.append(portfolio_path)
@@ -520,7 +520,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     plt.legend()
     plt.tight_layout()
 
-    hedge_error_path = output_path / "hedge_error_paths.png"
+    hedge_error_path = output_path / "hedge_error_paths.pdf"
     plt.savefig(hedge_error_path, dpi=150)
     plt.close()
     saved_files.append(hedge_error_path)
@@ -538,7 +538,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     plt.legend()
     plt.tight_layout()
 
-    shares_path = output_path / "stock_shares_paths.png"
+    shares_path = output_path / "stock_shares_paths.pdf"
     plt.savefig(shares_path, dpi=150)
     plt.close()
     saved_files.append(shares_path)
@@ -555,7 +555,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     plt.legend()
     plt.tight_layout()
 
-    delta_path = output_path / "option_delta_path.png"
+    delta_path = output_path / "option_delta_path.pdf"
     plt.savefig(delta_path, dpi=150)
     plt.close()
     saved_files.append(delta_path)
@@ -573,7 +573,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     plt.legend()
     plt.tight_layout()
 
-    transaction_cost_path = output_path / "cumulative_transaction_cost.png"
+    transaction_cost_path = output_path / "cumulative_transaction_cost.pdf"
     plt.savefig(transaction_cost_path, dpi=150)
     plt.close()
     saved_files.append(transaction_cost_path)
@@ -592,7 +592,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     plt.legend()
     plt.tight_layout()
 
-    pnl_path = output_path / "daily_pnl_paths.png"
+    pnl_path = output_path / "daily_pnl_paths.pdf"
     plt.savefig(pnl_path, dpi=150)
     plt.close()
     saved_files.append(pnl_path)
@@ -639,7 +639,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
 
         fig.tight_layout()
 
-        attribution_path = output_path / "greek_pnl_attribution_cumulative.png"
+        attribution_path = output_path / "greek_pnl_attribution_cumulative.pdf"
         fig.savefig(attribution_path, dpi=150)
         plt.close(fig)
         saved_files.append(attribution_path)
@@ -656,7 +656,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     plt.xticks(rotation=20)
     plt.title("Final Hedge Error by Strategy")
 
-    error_path = output_path / "final_hedge_error.png"
+    error_path = output_path / "final_hedge_error.pdf"
     plt.savefig(error_path, dpi=150)
     plt.close()
     saved_files.append(error_path)
@@ -696,7 +696,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
 
         plt.tight_layout()
 
-        bkl_path = output_path / "bkl_vs_realized.png"
+        bkl_path = output_path / "bkl_vs_realized.pdf"
         plt.savefig(bkl_path, dpi=150)
         plt.close()
         saved_files.append(bkl_path)
@@ -721,7 +721,7 @@ def save_vol_mismatch_plots(
     ax.set_ylabel("Hedge error")
     ax.legend()
     plt.tight_layout()
-    p = output_path / "vol_mismatch_hedge_error.png"
+    p = output_path / "vol_mismatch_hedge_error.pdf"
     plt.savefig(p, dpi=150); plt.close(); saved.append(p)
 
     # Volatility used each day
@@ -732,7 +732,7 @@ def save_vol_mismatch_plots(
     ax.set_ylabel("Annualised vol")
     ax.legend()
     plt.tight_layout()
-    p = output_path / "vol_mismatch_vol_paths.png"
+    p = output_path / "vol_mismatch_vol_paths.pdf"
     plt.savefig(p, dpi=150); plt.close(); saved.append(p)
 
     return saved
@@ -775,7 +775,7 @@ def save_summary_plots(summary: pd.DataFrame, output_dir: str = "outputs/figures
         axis.axis("off")
 
     fig.tight_layout()
-    summary_path = output_path / "summary_metrics.png"
+    summary_path = output_path / "summary_metrics.pdf"
     fig.savefig(summary_path, dpi=150)
     plt.close(fig)
     saved_files.append(summary_path)

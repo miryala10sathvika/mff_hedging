@@ -28,8 +28,8 @@ This makes no hedge, static hedge, periodic delta hedging, and the continuous id
 - `test_chain2.py`
 - `test_find_good_option.py`
 - `test_merge.py`
-- `outputs/figures/yahoo_option/final_hedge_error.png`
-- `outputs/figures/yahoo_option/portfolio_value_paths.png`
+- `outputs/figures/yahoo_option/final_hedge_error.pdf`
+- `outputs/figures/yahoo_option/portfolio_value_paths.pdf`
 - `outputs/tables/yahoo_option_summary.csv`
 
 ## Formula and Accounting Corrections
@@ -242,8 +242,8 @@ volatility_source: current_chain_iv
 
 Outputs were regenerated:
 
-- `outputs/figures/yahoo_option/portfolio_value_paths.png`
-- `outputs/figures/yahoo_option/final_hedge_error.png`
+- `outputs/figures/yahoo_option/portfolio_value_paths.pdf`
+- `outputs/figures/yahoo_option/final_hedge_error.pdf`
 - `outputs/tables/yahoo_option_summary.csv`
 
 ## Proposal Requirement Coverage
@@ -265,15 +265,14 @@ Outputs were regenerated:
 | Greek-based P&L attribution | Mostly satisfied |
 | VaR and CVaR summary metrics | Satisfied |
 | Optimization of rebalancing frequency | Satisfied with an automatic periodic-strategy selector based on downside CVaR plus transaction cost |
-| Bertsimas-Kogan-Lo discrete hedging variance approximation | Not yet implemented |
+| Bertsimas-Kogan-Lo discrete hedging variance approximation | Satisfied |
 
 ## Remaining Work
 
 The project now satisfies the main engineering and backtesting requirements in the proposal. The remaining academic/reporting gaps are:
 
-1. Add an explicit Bertsimas-Kogan-Lo style discrete hedging variance approximation.
-2. Expand the report notebook or final writeup to explain why live Yahoo option data can be noisy, especially around implied volatility and thinly traded contracts.
-3. Optionally add more robust empirical experiments across multiple expirations and moneyness levels.
+1. Expand the report notebook or final writeup to explain why live Yahoo option data can be noisy, especially around implied volatility and thinly traded contracts.
+2. Optionally add more robust empirical experiments across multiple expirations and moneyness levels.
 
 ## Conclusion
 
