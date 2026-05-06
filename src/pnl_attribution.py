@@ -88,13 +88,14 @@ def summarize_results(results: pd.DataFrame) -> pd.Series:
     hedge_error_rmse = math.sqrt(float((results["hedge_error"] ** 2).mean()))
     hedge_error_mae = float(results["hedge_error"].abs().mean())
 
-    # VaR and CVaR on daily P&L or hedge error change
+    # Positive VaR/CVaR on daily losses, where loss is negative P&L.
     pnl_series = results["total_pnl"].dropna()
     if not pnl_series.empty:
-        var_95 = float(pnl_series.quantile(0.05))
-        cvar_95 = float(pnl_series[pnl_series <= var_95].mean())
-        var_99 = float(pnl_series.quantile(0.01))
-        cvar_99 = float(pnl_series[pnl_series <= var_99].mean())
+        loss_series = -pnl_series
+        var_95 = float(loss_series.quantile(0.95))
+        cvar_95 = float(loss_series[loss_series >= var_95].mean())
+        var_99 = float(loss_series.quantile(0.99))
+        cvar_99 = float(loss_series[loss_series >= var_99].mean())
     else:
         var_95 = cvar_95 = var_99 = cvar_99 = 0.0
 

@@ -10,12 +10,21 @@ os.environ.setdefault("XDG_CACHE_HOME", str(CACHE_ROOT))
 
 from src.experiments import (
     YahooOptionExperimentConfig,
-    get_selected_strategy,
+    get_selected_strategies,
     run_yahoo_option_experiment,
     save_plots,
     save_summary_plots,
     save_summary_table,
 )
+
+
+def _contract_results(results: dict[str, object], contract_symbol: str) -> dict[str, object]:
+    prefix = f"{contract_symbol}::"
+    return {
+        label.removeprefix(prefix): frame
+        for label, frame in results.items()
+        if label.startswith(prefix)
+    }
 
 
 def main() -> None:
@@ -36,6 +45,9 @@ def main() -> None:
         target_abs_delta=0.50,
         min_abs_delta=0.25,
         max_abs_delta=0.75,
+        max_contracts=5,
+        fixed_contracts_path="data/yahoo_option_contracts.csv",
+        refresh_contract_selection=False,
         rate=0.04,  # more realistic dynamic rate average
         history_period="max",
         transaction_cost_bps=5.0,
@@ -43,23 +55,39 @@ def main() -> None:
     )
 
     results, summary, metadata = run_yahoo_option_experiment(config)
-    selected_strategy = get_selected_strategy(summary)
-    figure_paths = save_plots(results, output_dir="outputs/figures/yahoo_option")
-    figure_paths.extend(save_summary_plots(summary, output_dir="outputs/figures/yahoo_option"))
+    selected_strategies = get_selected_strategies(summary)
+    figure_paths = []
+    for contract_metadata in metadata:
+        contract_symbol = str(contract_metadata["contract_symbol"])
+        contract_output_dir = f"outputs/figures/yahoo_option/{contract_symbol}"
+        per_contract_results = _contract_results(results, contract_symbol)
+        per_contract_summary = summary.xs(contract_symbol, level="contract_symbol")
+        figure_paths.extend(save_plots(per_contract_results, output_dir=contract_output_dir))
+        figure_paths.extend(save_summary_plots(per_contract_summary, output_dir=contract_output_dir))
+
     table_path = save_summary_table(summary, output_path="outputs/tables/yahoo_option_summary.csv")
 
     print("Yahoo option run complete.")
-    print("\nSelected contract:")
-    for key, value in metadata.items():
-        print(f"- {key}: {value}")
+    print("\nSelected contracts:")
+    for contract_metadata in metadata:
+        print(
+            f"- {contract_metadata['contract_symbol']} "
+            f"exp={contract_metadata['expiration']} "
+            f"strike={contract_metadata['selected_strike']} "
+            f"history={contract_metadata['history_observations']} "
+            f"vol_source={contract_metadata['volatility_source']} "
+            f"selection={contract_metadata['selection_method']}"
+        )
 
-    print(
-        "\nAuto-selected rehedge frequency:"
-        f"\n- strategy: {selected_strategy.name}"
-        f"\n- objective: {float(selected_strategy['selector_objective']):.6f}"
-        f"\n- cvar_loss: {float(selected_strategy['selector_cvar_loss']):.6f}"
-        f"\n- total_transaction_cost: {float(selected_strategy['total_transaction_cost']):.6f}"
-    )
+    print("\nAuto-selected rehedge frequencies:")
+    for index, selected_strategy in selected_strategies.iterrows():
+        contract_symbol, strategy = index
+        print(
+            f"- {contract_symbol}: {strategy} "
+            f"objective={float(selected_strategy['selector_objective']):.6f} "
+            f"cvar_loss={float(selected_strategy['selector_cvar_loss']):.6f} "
+            f"tc={float(selected_strategy['total_transaction_cost']):.6f}"
+        )
 
     print("\nSummary:")
     print(summary.round(6).to_string())

@@ -11,11 +11,11 @@ from src.data_loader import (
     YahooOptionContractConfig,
     add_realized_volatility,
     build_yahoo_observed_option_frame,
+    build_yahoo_observed_option_frames,
     build_option_frame,
     download_price_history,
 )
 from src.hedging_engine import HedgeConfig, run_delta_hedge
-from src.pnl_attribution import add_greek_pnl_attribution, summarize_results
 from src.pnl_attribution import add_bkl_variance_approximation, add_greek_pnl_attribution, summarize_results
 
 @dataclass(frozen=True)
@@ -76,6 +76,9 @@ class YahooOptionExperimentConfig:
     target_abs_delta: float = 0.50
     min_abs_delta: float = 0.25
     max_abs_delta: float = 0.75
+    max_contracts: int = 5
+    fixed_contracts_path: str | None = "data/yahoo_option_contracts.csv"
+    refresh_contract_selection: bool = False
     transaction_cost_bps: float = 0.0
     rehedge_frequencies: tuple[int, ...] = (1, 2, 5)
     include_no_hedge: bool = True
@@ -112,7 +115,7 @@ def apply_strategy_selector(
     if periodic.empty:
         raise ValueError("strategy selector requires at least one periodic rehedging strategy")
 
-    periodic["selector_cvar_loss"] = -periodic[selector.cvar_metric].clip(upper=0.0)
+    periodic["selector_cvar_loss"] = periodic[selector.cvar_metric]
     periodic["selector_objective"] = (
         selector.cvar_weight * periodic["selector_cvar_loss"]
         + selector.transaction_cost_weight * periodic["total_transaction_cost"]
@@ -144,6 +147,12 @@ def get_selected_strategy(summary: pd.DataFrame) -> pd.Series:
     if len(selected) > 1:
         raise ValueError("summary marks more than one auto-selected strategy")
     return selected.iloc[0]
+
+
+def get_selected_strategies(summary: pd.DataFrame) -> pd.DataFrame:
+    if "is_auto_selected" not in summary.columns:
+        raise ValueError("summary does not contain strategy-selector output")
+    return summary.loc[summary["is_auto_selected"].fillna(False)].copy()
 
 
 def run_experiment(config: ExperimentConfig) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
@@ -320,8 +329,8 @@ def run_vol_mismatch_experiment(
 
 def run_yahoo_option_experiment(
     config: YahooOptionExperimentConfig,
-) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, dict[str, str | float]]:
-    option_frame, metadata = build_yahoo_observed_option_frame(
+) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, list[dict[str, str | float]]]:
+    option_frames = build_yahoo_observed_option_frames(
         YahooOptionContractConfig(
             ticker=config.ticker,
             expiration=config.expiration,
@@ -341,6 +350,9 @@ def run_yahoo_option_experiment(
             target_abs_delta=config.target_abs_delta,
             min_abs_delta=config.min_abs_delta,
             max_abs_delta=config.max_abs_delta,
+            max_contracts=config.max_contracts,
+            fixed_contracts_path=config.fixed_contracts_path,
+            refresh_contract_selection=config.refresh_contract_selection,
         )
     )
 
@@ -356,74 +368,87 @@ def run_yahoo_option_experiment(
         "selection_method",
     ]
 
-    for frequency in config.rehedge_frequencies:
-        label = f"every_{frequency}_day" if frequency == 1 else f"every_{frequency}_days"
-        hedge_config = HedgeConfig(
-            rehedge_every=frequency,
-            transaction_cost_bps=config.transaction_cost_bps,
-        )
-        result = run_delta_hedge(option_frame, hedge_config)
-        result = add_greek_pnl_attribution(result)
-        result = add_bkl_variance_approximation(result)
-        paths[label] = result
+    metadata_list: list[dict[str, str | float]] = []
 
-        summary = summarize_results(result).to_dict()
-        summary["strategy"] = label
-        for field in metadata_summary_fields:
-            summary[field] = metadata.get(field)
-        summaries.append(summary)
+    for option_frame, metadata in option_frames:
+        contract_symbol = str(metadata["contract_symbol"])
+        metadata_list.append(metadata)
 
-    if getattr(config, "include_no_hedge", False):
-        label = "no_hedge"
-        hedge_config = HedgeConfig(
-            is_no_hedge=True,
-            transaction_cost_bps=config.transaction_cost_bps,
-        )
-        result = run_delta_hedge(option_frame, hedge_config)
-        result = add_greek_pnl_attribution(result)
-        result = add_bkl_variance_approximation(result)
-        paths[label] = result
-        summary = summarize_results(result).to_dict()
-        summary["strategy"] = label
-        for field in metadata_summary_fields:
-            summary[field] = metadata.get(field)
-        summaries.append(summary)
+        for frequency in config.rehedge_frequencies:
+            label = f"every_{frequency}_day" if frequency == 1 else f"every_{frequency}_days"
+            hedge_config = HedgeConfig(
+                rehedge_every=frequency,
+                transaction_cost_bps=config.transaction_cost_bps,
+            )
+            result = run_delta_hedge(option_frame, hedge_config)
+            result = add_greek_pnl_attribution(result)
+            result = add_bkl_variance_approximation(result)
+            paths[f"{contract_symbol}::{label}"] = result
 
-    if getattr(config, "include_static_hedge", False):
-        label = "static_hedge"
-        hedge_config = HedgeConfig(
-            is_static_hedge=True,
-            transaction_cost_bps=config.transaction_cost_bps,
-        )
-        result = run_delta_hedge(option_frame, hedge_config)
-        result = add_greek_pnl_attribution(result)
-        result = add_bkl_variance_approximation(result)
-        paths[label] = result
-        summary = summarize_results(result).to_dict()
-        summary["strategy"] = label
-        for field in metadata_summary_fields:
-            summary[field] = metadata.get(field)
-        summaries.append(summary)
+            summary = summarize_results(result).to_dict()
+            summary["strategy"] = label
+            for field in metadata_summary_fields:
+                summary[field] = metadata.get(field)
+            summaries.append(summary)
 
-    if getattr(config, "include_continuous_ideal", False):
-        label = "continuous_ideal"
-        hedge_config = HedgeConfig(
-            is_continuous_ideal=True,
-            transaction_cost_bps=0.0,
-        )
-        result = run_delta_hedge(option_frame, hedge_config)
-        result = add_greek_pnl_attribution(result)
-        result = add_bkl_variance_approximation(result)
-        paths[label] = result
-        summary = summarize_results(result).to_dict()
-        summary["strategy"] = label
-        for field in metadata_summary_fields:
-            summary[field] = metadata.get(field)
-        summaries.append(summary)
+        if getattr(config, "include_no_hedge", False):
+            label = "no_hedge"
+            hedge_config = HedgeConfig(
+                is_no_hedge=True,
+                transaction_cost_bps=config.transaction_cost_bps,
+            )
+            result = run_delta_hedge(option_frame, hedge_config)
+            result = add_greek_pnl_attribution(result)
+            result = add_bkl_variance_approximation(result)
+            paths[f"{contract_symbol}::{label}"] = result
+            summary = summarize_results(result).to_dict()
+            summary["strategy"] = label
+            for field in metadata_summary_fields:
+                summary[field] = metadata.get(field)
+            summaries.append(summary)
 
-    summary_df = pd.DataFrame(summaries).set_index("strategy").sort_index()
-    summary_df = apply_strategy_selector(summary_df, config.strategy_selector)
-    return paths, summary_df, metadata
+        if getattr(config, "include_static_hedge", False):
+            label = "static_hedge"
+            hedge_config = HedgeConfig(
+                is_static_hedge=True,
+                transaction_cost_bps=config.transaction_cost_bps,
+            )
+            result = run_delta_hedge(option_frame, hedge_config)
+            result = add_greek_pnl_attribution(result)
+            result = add_bkl_variance_approximation(result)
+            paths[f"{contract_symbol}::{label}"] = result
+            summary = summarize_results(result).to_dict()
+            summary["strategy"] = label
+            for field in metadata_summary_fields:
+                summary[field] = metadata.get(field)
+            summaries.append(summary)
+
+        if getattr(config, "include_continuous_ideal", False):
+            label = "continuous_ideal"
+            hedge_config = HedgeConfig(
+                is_continuous_ideal=True,
+                transaction_cost_bps=0.0,
+            )
+            result = run_delta_hedge(option_frame, hedge_config)
+            result = add_greek_pnl_attribution(result)
+            result = add_bkl_variance_approximation(result)
+            paths[f"{contract_symbol}::{label}"] = result
+            summary = summarize_results(result).to_dict()
+            summary["strategy"] = label
+            for field in metadata_summary_fields:
+                summary[field] = metadata.get(field)
+            summaries.append(summary)
+
+    summary_rows = []
+    raw_summary = pd.DataFrame(summaries)
+    for _, contract_summary in raw_summary.groupby("contract_symbol", sort=False):
+        contract_summary = contract_summary.set_index("strategy").sort_index()
+        contract_summary = apply_strategy_selector(contract_summary, config.strategy_selector)
+        summary_rows.append(contract_summary.reset_index())
+
+    summary_df = pd.concat(summary_rows, ignore_index=True)
+    summary_df = summary_df.set_index(["contract_symbol", "strategy"]).sort_index()
+    return paths, summary_df, metadata_list
 
 
 def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figures") -> list[Path]:
@@ -433,8 +458,11 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
 
     representative_label, representative_frame = next(iter(results.items()))
 
+    def strategy_name(label: str) -> str:
+        return label.split("::")[-1]
+
     practical_results = {
-        label: frame for label, frame in results.items() if label != "continuous_ideal"
+        label: frame for label, frame in results.items() if strategy_name(label) != "continuous_ideal"
     }
     comparison_results = practical_results or results
 
@@ -601,7 +629,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     # Greek Attribution
     # -------------------------------
     attribution_label = next(
-        (label for label in results if label.startswith("every_")),
+        (label for label in results if strategy_name(label).startswith("every_")),
         representative_label,
     )
     attribution_frame = results[attribution_label]
@@ -667,7 +695,7 @@ def save_plots(results: dict[str, pd.DataFrame], output_dir: str = "outputs/figu
     bkl_data = {
         label: frame
         for label, frame in results.items()
-        if "bkl_std_cumulative" in frame.columns and label.startswith("every_")
+        if "bkl_std_cumulative" in frame.columns and strategy_name(label).startswith("every_")
     }
 
     if bkl_data:
@@ -759,12 +787,16 @@ def save_summary_plots(summary: pd.DataFrame, output_dir: str = "outputs/figures
     axes_list = list(axes.flat)
     for axis, (column, title) in zip(axes_list, available_metrics):
         values = pd.to_numeric(plotted_summary[column], errors="coerce")
+        x_labels = [
+            " / ".join(str(part) for part in label) if isinstance(label, tuple) else str(label)
+            for label in plotted_summary.index
+        ]
         if "is_auto_selected" in plotted_summary.columns:
             selected_flags = plotted_summary["is_auto_selected"].fillna(False)
         else:
             selected_flags = pd.Series(False, index=plotted_summary.index)
         colors = ["tab:green" if bool(value) else "tab:blue" for value in selected_flags]
-        axis.bar(plotted_summary.index, values, color=colors)
+        axis.bar(x_labels, values, color=colors)
         axis.axhline(0.0, color="black", linewidth=0.8)
         axis.set_title(title)
         axis.set_xlabel("Strategy")
