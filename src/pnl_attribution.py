@@ -151,7 +151,7 @@ def add_bkl_variance_approximation(results: pd.DataFrame) -> pd.DataFrame:
         g     = float(row["gamma"])
         dt    = float(row["dt"])
         # variance contribution of one discrete rebalancing interval
-        bkl_step.append(0.5 * (sigma * s * g) ** 2 * dt ** 2)
+        bkl_step.append(0.5 * (sigma**2 * s**2 * g) ** 2 * dt ** 2)
 
     frame["bkl_var_step"]        = bkl_step
     frame["bkl_var_cumulative"]  = frame["bkl_var_step"].cumsum()
